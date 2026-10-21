@@ -5,6 +5,8 @@ export const HILL_CENTER_Z = -6;
 export const HILL_RADIUS = 31;
 export const HILL_HEIGHT = 8.4;
 export const WATER_LEVEL = -0.82;
+export const TERRAIN_SIZE = 430;
+export const TERRAIN_CENTER_Z = -62;
 
 export function getStreamCenterZ(x) {
   return (
@@ -36,11 +38,15 @@ export function getTerrainHeight(x, z) {
 }
 
 export function createTerrain() {
-  const size = 430;
   const segments = 258;
-  const geometry = new THREE.PlaneGeometry(size, size, segments, segments);
+  const geometry = new THREE.PlaneGeometry(
+    TERRAIN_SIZE,
+    TERRAIN_SIZE,
+    segments,
+    segments,
+  );
   geometry.rotateX(-Math.PI / 2);
-  geometry.translate(0, 0, -62);
+  geometry.translate(0, 0, TERRAIN_CENTER_Z);
 
   const positions = geometry.getAttribute("position");
   const colors = new Float32Array(positions.count * 3);

@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { clamp01 } from "../utils/random.js";
+import { getGroundHeight } from "../world/mountains.js";
 import {
-  HILL_CENTER_Z,
+  TERRAIN_CENTER_Z,
+  TERRAIN_SIZE,
   WATER_LEVEL,
-  getTerrainHeight,
 } from "../world/terrain.js";
 
 const WALK_SPEED = 4.2;
@@ -11,8 +12,10 @@ const RUN_SPEED = 9.6;
 const CROUCH_SPEED = 1.8;
 const JUMP_SPEED = 6.3;
 const GRAVITY = 19;
-const BOUNDARY_RADIUS = 58;
 const PLAYER_RADIUS = 0.3;
+const MAP_HALF_X = TERRAIN_SIZE / 2 - 2;
+const MAP_MIN_Z = TERRAIN_CENTER_Z - TERRAIN_SIZE / 2 + 2;
+const MAP_MAX_Z = TERRAIN_CENTER_Z + TERRAIN_SIZE / 2 - 2;
 
 const UP = new THREE.Vector3(0, 1, 0);
 const forward = new THREE.Vector3();
@@ -188,7 +191,7 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
   const group = new THREE.Group();
   const character = createCharacter();
   group.add(character.visual);
-  group.position.set(startX, getTerrainHeight(startX, startZ), startZ);
+  group.position.set(startX, getGroundHeight(startX, startZ), startZ);
   group.rotation.y = Math.PI;
 
   const horizontalVelocity = new THREE.Vector2();
@@ -223,7 +226,7 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     }
 
     const crouching = input.crouch;
-    const groundBefore = getTerrainHeight(group.position.x, group.position.z);
+    const groundBefore = getGroundHeight(group.position.x, group.position.z);
     const wading = groundBefore < WATER_LEVEL - 0.2;
     let targetSpeed = 0;
     if (moving) {
@@ -248,16 +251,29 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     let nextX = group.position.x + horizontalVelocity.x * dt;
     let nextZ = group.position.z + horizontalVelocity.y * dt;
 
-    const distanceFromHome = Math.hypot(nextX, nextZ - HILL_CENTER_Z);
-    if (distanceFromHome > BOUNDARY_RADIUS) {
-      const scale = BOUNDARY_RADIUS / distanceFromHome;
-      nextX *= scale;
-      nextZ = HILL_CENTER_Z + (nextZ - HILL_CENTER_Z) * scale;
-      horizontalVelocity.multiplyScalar(0.4);
+    if (nextX < -MAP_HALF_X) {
+      nextX = -MAP_HALF_X;
+      horizontalVelocity.x = 0;
+    } else if (nextX > MAP_HALF_X) {
+      nextX = MAP_HALF_X;
+      horizontalVelocity.x = 0;
+    }
+
+    if (nextZ < MAP_MIN_Z) {
+      nextZ = MAP_MIN_Z;
+      horizontalVelocity.y = 0;
+    } else if (nextZ > MAP_MAX_Z) {
+      nextZ = MAP_MAX_Z;
+      horizontalVelocity.y = 0;
     }
 
     if (collisionWorld) {
-      const collision = collisionWorld.resolve(nextX, nextZ, PLAYER_RADIUS);
+      const collision = collisionWorld.resolve(
+        nextX,
+        nextZ,
+        PLAYER_RADIUS,
+        group.position.y,
+      );
       if (collision.hit) {
         nextX = collision.x;
         nextZ = collision.z;
@@ -273,7 +289,7 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
 
     group.position.x = nextX;
     group.position.z = nextZ;
-    const ground = getTerrainHeight(nextX, nextZ);
+    const ground = getGroundHeight(nextX, nextZ);
 
     if (grounded && input.consumeJump()) {
       grounded = false;
@@ -329,10 +345,10 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       elbowLeftTarget = -0.82;
       elbowRightTarget = -0.82;
       crouchDropTarget = crouching ? -0.12 : 0;
-      leanTarget = -0.04;
+      leanTarget = 0.03;
     } else if (crouching) {
       crouchDropTarget = -0.29;
-      leanTarget = -0.24;
+      leanTarget = 0.18;
       if (speed > 0.18) {
         walkPhase += dt * 5;
         const swing = Math.sin(walkPhase) * 0.22;
@@ -373,7 +389,7 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       elbowRightTarget = -0.28 - 0.75 * speedRatio;
       bobTarget =
         Math.abs(Math.sin(walkPhase * 2)) * (0.025 + 0.05 * speedRatio);
-      leanTarget = -0.05 - 0.12 * speedRatio;
+      leanTarget = 0.05 + 0.12 * speedRatio;
     } else {
       walkPhase = 0;
       armLeftTarget = 0.04 + Math.sin(elapsed * 1.6) * 0.025;

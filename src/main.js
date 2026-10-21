@@ -7,14 +7,13 @@ import { createClouds } from "./world/clouds.js";
 import { createFlowers } from "./world/flowers.js";
 import { createPineForest } from "./world/forest.js";
 import { createGrass } from "./world/grass.js";
-import { createMountains } from "./world/mountains.js";
+import { createMountains, getGroundHeight } from "./world/mountains.js";
 import { createPollen } from "./world/pollen.js";
 import { createRocks } from "./world/rocks.js";
 import { createSky } from "./world/sky.js";
 import { createStream } from "./world/stream.js";
 import {
   createTerrain,
-  getTerrainHeight,
   HILL_CENTER_Z,
 } from "./world/terrain.js";
 import { createTree } from "./world/tree.js";
@@ -142,7 +141,7 @@ function animate() {
   controls.update();
 
   const cameraFloor =
-    getTerrainHeight(camera.position.x, camera.position.z) + 0.75;
+    getGroundHeight(camera.position.x, camera.position.z) + 0.75;
   if (camera.position.y < cameraFloor) {
     camera.position.y = cameraFloor;
     camera.lookAt(controls.target);

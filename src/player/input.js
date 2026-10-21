@@ -18,6 +18,7 @@ const MOVEMENT_CODES = new Set([
 export function createInput() {
   const held = new Set();
   let jumpQueued = false;
+  let crouched = false;
 
   const onKeyDown = (event) => {
     if (MOVEMENT_CODES.has(event.code)) {
@@ -26,6 +27,14 @@ export function createInput() {
     held.add(event.code);
     if (event.code === "Space" && !event.repeat) {
       jumpQueued = true;
+    }
+    if (
+      !event.repeat &&
+      (event.code === "ControlLeft" ||
+        event.code === "ControlRight" ||
+        event.code === "KeyC")
+    ) {
+      crouched = !crouched;
     }
   };
 
@@ -59,9 +68,7 @@ export function createInput() {
       return held.has("ShiftLeft") || held.has("ShiftRight");
     },
     get crouch() {
-      return (
-        held.has("ControlLeft") || held.has("ControlRight") || held.has("KeyC")
-      );
+      return crouched;
     },
     consumeJump() {
       const queued = jumpQueued;

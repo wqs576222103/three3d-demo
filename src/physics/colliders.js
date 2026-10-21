@@ -2,10 +2,10 @@ export function createCollisionWorld() {
   const circles = [];
 
   return {
-    addCircle(x, z, radius) {
-      circles.push({ x, z, radius });
+    addCircle(x, z, radius, topY = Number.POSITIVE_INFINITY) {
+      circles.push({ x, z, radius, topY });
     },
-    resolve(x, z, radius) {
+    resolve(x, z, radius, feetY = 0) {
       let resolvedX = x;
       let resolvedZ = z;
       let normalX = 0;
@@ -15,6 +15,11 @@ export function createCollisionWorld() {
       for (let iteration = 0; iteration < 2; iteration += 1) {
         for (let i = 0; i < circles.length; i += 1) {
           const circle = circles[i];
+
+          if (feetY >= circle.topY - 0.06) {
+            continue;
+          }
+
           let dx = resolvedX - circle.x;
           let dz = resolvedZ - circle.z;
           const minimumDistance = radius + circle.radius;

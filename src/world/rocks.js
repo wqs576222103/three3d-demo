@@ -36,7 +36,8 @@ export function createRocks(collisionWorld) {
     );
     const scaleX = scale * (1.1 + random() * 0.8);
     const scaleZ = scale * (0.9 + random() * 0.6);
-    rock.position.set(x, getTerrainHeight(x, z) + scale * 0.2, z);
+    const groundY = getTerrainHeight(x, z);
+    rock.position.set(x, groundY + scale * 0.2, z);
     rock.rotation.set(
       random() * Math.PI,
       random() * Math.PI,
@@ -46,7 +47,12 @@ export function createRocks(collisionWorld) {
     rock.castShadow = true;
     rock.receiveShadow = true;
     group.add(rock);
-    collisionWorld?.addCircle(x, z, Math.max(scaleX, scaleZ) * 0.82);
+    collisionWorld?.addCircle(
+      x,
+      z,
+      Math.max(scaleX, scaleZ) * 0.82,
+      groundY + scale * 0.9,
+    );
   }
 
   return group;

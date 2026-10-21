@@ -1,5 +1,97 @@
 import * as THREE from "three";
 import { clamp01, fbm, smooth01 } from "../utils/random.js";
+import { TERRAIN_CENTER_Z, TERRAIN_SIZE, getTerrainHeight } from "./terrain.js";
+
+const NEAR_RANGE = {
+  width: 470,
+  depth: 150,
+  centerZ: -196,
+  segmentsX: 180,
+  segmentsZ: 56,
+  seed: 3.7,
+  snowline: 34,
+  baseHeight: 4,
+  rockDark: 0x525b62,
+  rockLight: 0x828b90,
+  snowColor: 0xf2f6fa,
+  baseColor: 0x3f563f,
+  peaks: [
+    { x: -200, height: 49, radiusX: 84, radiusZ: 57, offsetZ: -9 },
+    { x: -120, height: 66, radiusX: 68, radiusZ: 51, offsetZ: 5 },
+    { x: -52, height: 42, radiusX: 56, radiusZ: 50, offsetZ: -11 },
+    { x: 20, height: 38, radiusX: 58, radiusZ: 48, offsetZ: 8 },
+    { x: 92, height: 64, radiusX: 71, radiusZ: 57, offsetZ: -2 },
+    { x: 180, height: 51, radiusX: 83, radiusZ: 48, offsetZ: 10 },
+  ],
+};
+
+const FAR_RANGE = {
+  width: 780,
+  depth: 210,
+  centerZ: -344,
+  segmentsX: 180,
+  segmentsZ: 48,
+  seed: 11.3,
+  snowline: 31,
+  baseHeight: 8,
+  rockDark: 0x7890a2,
+  rockLight: 0xa3b4c0,
+  snowColor: 0xf6faff,
+  baseColor: 0x647f8e,
+  peaks: [
+    { x: -320, height: 69, radiusX: 125, radiusZ: 72, offsetZ: -12 },
+    { x: -205, height: 88, radiusX: 100, radiusZ: 72, offsetZ: 8 },
+    { x: -90, height: 74, radiusX: 110, radiusZ: 68, offsetZ: -9 },
+    { x: 10, height: 55, radiusX: 90, radiusZ: 72, offsetZ: 4 },
+    { x: 118, height: 84, radiusX: 108, radiusZ: 70, offsetZ: -7 },
+    { x: 225, height: 90, radiusX: 104, radiusZ: 73, offsetZ: 9 },
+    { x: 335, height: 65, radiusX: 120, radiusZ: 70, offsetZ: -4 },
+  ],
+};
+
+function evaluateMountainHeight(options, x, z) {
+  const { centerZ, peaks, seed } = options;
+  let height = 0;
+
+  peaks.forEach((peak) => {
+    const dx = (x - peak.x) / peak.radiusX;
+    const dz = (z - (centerZ + peak.offsetZ)) / peak.radiusZ;
+    const falloff = Math.exp(-(dx * dx + dz * dz) * 1.18);
+    height = Math.max(height, peak.height * falloff);
+  });
+
+  const mainNoise = fbm(x * 0.021 + seed, z * 0.027 - seed, 4);
+  const detailNoise = fbm(x * 0.083 - seed, z * 0.074 + seed * 0.6, 3);
+  height *= 0.78 + mainNoise * 0.5;
+  height += (detailNoise - 0.5) * 12 * smooth01(height / 18);
+  return Math.max(0, height);
+}
+
+export function getMountainHeight(x, z) {
+  let height = 0;
+  [NEAR_RANGE, FAR_RANGE].forEach((range) => {
+    const inBounds =
+      Math.abs(x) <= range.width / 2 &&
+      z >= range.centerZ - range.depth / 2 &&
+      z <= range.centerZ + range.depth / 2;
+    if (inBounds) {
+      height = Math.max(height, evaluateMountainHeight(range, x, z));
+    }
+  });
+  return height;
+}
+
+export function getGroundHeight(x, z) {
+  if (
+    x < -TERRAIN_SIZE / 2 ||
+    x > TERRAIN_SIZE / 2 ||
+    z < TERRAIN_CENTER_Z - TERRAIN_SIZE / 2 ||
+    z > TERRAIN_CENTER_Z + TERRAIN_SIZE / 2
+  ) {
+    return getMountainHeight(x, z);
+  }
+  return Math.max(getMountainHeight(x, z), getTerrainHeight(x, z));
+}
 
 function createMountainRange(options) {
   const {
@@ -27,20 +119,7 @@ function createMountainRange(options) {
     for (let ix = 0; ix <= segmentsX; ix += 1) {
       const u = ix / segmentsX;
       const x = (u - 0.5) * width;
-      let height = 0;
-
-      peaks.forEach((peak) => {
-        const dx = (x - peak.x) / peak.radiusX;
-        const dz = (z - (centerZ + peak.offsetZ)) / peak.radiusZ;
-        const falloff = Math.exp(-(dx * dx + dz * dz) * 1.18);
-        height = Math.max(height, peak.height * falloff);
-      });
-
-      const mainNoise = fbm(x * 0.021 + seed, z * 0.027 - seed, 4);
-      const detailNoise = fbm(x * 0.083 - seed, z * 0.074 + seed * 0.6, 3);
-      height *= 0.78 + mainNoise * 0.5;
-      height += (detailNoise - 0.5) * 12 * smooth01(height / 18);
-      height = Math.max(0, height);
+      const height = evaluateMountainHeight(options, x, z);
 
       positions.push(x, height, z);
     }
@@ -108,57 +187,7 @@ function createMountainRange(options) {
 
 export function createMountains() {
   const group = new THREE.Group();
-
-  group.add(
-    createMountainRange({
-      width: 450,
-      depth: 140,
-      centerZ: -154,
-      segmentsX: 180,
-      segmentsZ: 56,
-      seed: 3.7,
-      snowline: 34,
-      baseHeight: 4,
-      rockDark: 0x525b62,
-      rockLight: 0x828b90,
-      snowColor: 0xf2f6fa,
-      baseColor: 0x3f563f,
-      peaks: [
-        { x: -178, height: 47, radiusX: 84, radiusZ: 57, offsetZ: -9 },
-        { x: -101, height: 64, radiusX: 68, radiusZ: 51, offsetZ: 5 },
-        { x: -27, height: 79, radiusX: 62, radiusZ: 57, offsetZ: -11 },
-        { x: 47, height: 57, radiusX: 71, radiusZ: 48, offsetZ: 8 },
-        { x: 128, height: 69, radiusX: 71, radiusZ: 57, offsetZ: -2 },
-        { x: 199, height: 48, radiusX: 83, radiusZ: 48, offsetZ: 10 },
-      ],
-    }),
-  );
-
-  group.add(
-    createMountainRange({
-      width: 760,
-      depth: 200,
-      centerZ: -292,
-      segmentsX: 180,
-      segmentsZ: 48,
-      seed: 11.3,
-      snowline: 31,
-      baseHeight: 8,
-      rockDark: 0x7890a2,
-      rockLight: 0xa3b4c0,
-      snowColor: 0xf6faff,
-      baseColor: 0x647f8e,
-      peaks: [
-        { x: -310, height: 69, radiusX: 125, radiusZ: 72, offsetZ: -12 },
-        { x: -198, height: 88, radiusX: 100, radiusZ: 72, offsetZ: 8 },
-        { x: -92, height: 74, radiusX: 110, radiusZ: 68, offsetZ: -9 },
-        { x: 5, height: 98, radiusX: 98, radiusZ: 75, offsetZ: 4 },
-        { x: 112, height: 81, radiusX: 108, radiusZ: 70, offsetZ: -7 },
-        { x: 218, height: 92, radiusX: 104, radiusZ: 73, offsetZ: 9 },
-        { x: 328, height: 65, radiusX: 120, radiusZ: 70, offsetZ: -4 },
-      ],
-    }),
-  );
-
+  group.add(createMountainRange(NEAR_RANGE));
+  group.add(createMountainRange(FAR_RANGE));
   return group;
 }
