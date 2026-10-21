@@ -68,6 +68,34 @@ controls.minPolarAngle = 0.5;
 controls.maxPolarAngle = Math.PI * 0.47;
 controls.rotateSpeed = 0.55;
 controls.zoomSpeed = 0.7;
+controls.cursorStyle = "grab";
+
+const orbitPointerDown = controls._onPointerDown;
+controls.domElement.removeEventListener("pointerdown", orbitPointerDown);
+controls._onPointerDown = (event) => {
+  if (!event.shiftKey) {
+    orbitPointerDown(event);
+    return;
+  }
+  orbitPointerDown(
+    new PointerEvent(event.type, {
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      isPrimary: event.isPrimary,
+      button: event.button,
+      buttons: event.buttons,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      shiftKey: false,
+      ctrlKey: false,
+      metaKey: false,
+      altKey: event.altKey,
+      bubbles: true,
+      cancelable: true,
+    }),
+  );
+};
+controls.domElement.addEventListener("pointerdown", controls._onPointerDown);
 controls.update();
 
 const playerDelta = new THREE.Vector3();
