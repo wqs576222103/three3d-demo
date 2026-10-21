@@ -12,10 +12,7 @@ import { createPollen } from "./world/pollen.js";
 import { createRocks } from "./world/rocks.js";
 import { createSky } from "./world/sky.js";
 import { createStream } from "./world/stream.js";
-import {
-  createTerrain,
-  HILL_CENTER_Z,
-} from "./world/terrain.js";
+import { createTerrain, HILL_CENTER_Z } from "./world/terrain.js";
 import { createTree } from "./world/tree.js";
 
 const renderer = new THREE.WebGLRenderer({
@@ -58,7 +55,13 @@ controls.target.copy(followTarget);
 camera.position.copy(followTarget).add(cameraOffset);
 controls.enableDamping = true;
 controls.dampingFactor = 0.055;
+controls.enableRotate = true;
 controls.enablePan = false;
+controls.mouseButtons = {
+  LEFT: THREE.MOUSE.ROTATE,
+  MIDDLE: THREE.MOUSE.DOLLY,
+  RIGHT: THREE.MOUSE.ROTATE,
+};
 controls.minDistance = 5;
 controls.maxDistance = 30;
 controls.minPolarAngle = 0.5;

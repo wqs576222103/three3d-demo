@@ -90,7 +90,11 @@ export function getGroundHeight(x, z) {
   ) {
     return getMountainHeight(x, z);
   }
-  return Math.max(getMountainHeight(x, z), getTerrainHeight(x, z));
+  const mountainHeight = getMountainHeight(x, z);
+  const terrainHeight = getTerrainHeight(x, z);
+  return mountainHeight > 0
+    ? Math.max(mountainHeight, terrainHeight)
+    : terrainHeight;
 }
 
 function createMountainRange(options) {

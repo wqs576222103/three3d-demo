@@ -16,6 +16,17 @@ const PLAYER_RADIUS = 0.3;
 const MAP_HALF_X = TERRAIN_SIZE / 2 - 2;
 const MAP_MIN_Z = TERRAIN_CENTER_Z - TERRAIN_SIZE / 2 + 2;
 const MAP_MAX_Z = TERRAIN_CENTER_Z + TERRAIN_SIZE / 2 - 2;
+const HIP_HEIGHT = 0.85;
+const UPPER_LEG_LENGTH = 0.42;
+const LOWER_LEG_LENGTH = 0.42;
+
+function getFootHeight(hipAngle, kneeAngle) {
+  return (
+    HIP_HEIGHT -
+    UPPER_LEG_LENGTH * Math.cos(hipAngle) -
+    LOWER_LEG_LENGTH * Math.cos(hipAngle + kneeAngle)
+  );
+}
 
 const UP = new THREE.Vector3(0, 1, 0);
 const forward = new THREE.Vector3();
@@ -200,7 +211,6 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
   let facing = Math.PI;
   let walkPhase = 0;
   let cameraAnchor = 1.55;
-  let crouchOffset = 0;
 
   function update(input, camera, delta, elapsed) {
     const dt = Math.min(delta, 0.05);
@@ -330,8 +340,6 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     let armRightTarget = -0.04;
     let elbowLeftTarget = -0.14;
     let elbowRightTarget = -0.14;
-    let bobTarget = 0;
-    let crouchDropTarget = 0;
     let leanTarget = 0;
 
     if (!grounded) {
@@ -344,10 +352,8 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       armRightTarget = -0.72;
       elbowLeftTarget = -0.82;
       elbowRightTarget = -0.82;
-      crouchDropTarget = crouching ? -0.12 : 0;
       leanTarget = 0.03;
     } else if (crouching) {
-      crouchDropTarget = -0.29;
       leanTarget = 0.18;
       if (speed > 0.18) {
         walkPhase += dt * 5;
@@ -360,7 +366,6 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
         armRightTarget = -0.34 + swing * 0.5;
         elbowLeftTarget = -0.68;
         elbowRightTarget = -0.68;
-        bobTarget = Math.abs(Math.sin(walkPhase * 2)) * 0.012;
       } else {
         walkPhase = 0;
         hipLeftTarget = -0.85;
@@ -387,8 +392,6 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       armRightTarget = swing * armSwing;
       elbowLeftTarget = -0.28 - 0.75 * speedRatio;
       elbowRightTarget = -0.28 - 0.75 * speedRatio;
-      bobTarget =
-        Math.abs(Math.sin(walkPhase * 2)) * (0.025 + 0.05 * speedRatio);
       leanTarget = 0.05 + 0.12 * speedRatio;
     } else {
       walkPhase = 0;
@@ -396,7 +399,6 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       armRightTarget = -0.04 - Math.sin(elapsed * 1.6) * 0.025;
       elbowLeftTarget = -0.14;
       elbowRightTarget = -0.14;
-      bobTarget = Math.sin(elapsed * 1.8) * 0.008;
     }
 
     character.legLeft.rotation.x = THREE.MathUtils.damp(
@@ -448,11 +450,19 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       dt,
     );
 
-    crouchOffset = THREE.MathUtils.damp(crouchOffset, crouchDropTarget, 10, dt);
+    const footLeft = getFootHeight(
+      character.legLeft.rotation.x,
+      character.kneeLeft.rotation.x,
+    );
+    const footRight = getFootHeight(
+      character.legRight.rotation.x,
+      character.kneeRight.rotation.x,
+    );
+    const stanceOffset = grounded ? -Math.min(footLeft, footRight) : 0;
     character.visual.position.y = THREE.MathUtils.damp(
       character.visual.position.y,
-      bobTarget + crouchOffset,
-      14,
+      stanceOffset,
+      18,
       dt,
     );
     character.visual.rotation.x = THREE.MathUtils.damp(
