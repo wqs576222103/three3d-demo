@@ -1,10 +1,13 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createAmbience } from "./audio/ambience.js";
 import { createCollisionWorld } from "./physics/colliders.js";
 import { createInput } from "./player/input.js";
 import { createPlayer } from "./player/player.js";
+import { createBirds } from "./world/birds.js";
 import { createClouds } from "./world/clouds.js";
 import { createCloudSea } from "./world/cloudSea.js";
+import { createFish } from "./world/fish.js";
 import { createFlowers } from "./world/flowers.js";
 import { createPineForest } from "./world/forest.js";
 import { createGrass } from "./world/grass.js";
@@ -133,9 +136,12 @@ const sunOffset = new THREE.Vector3().subVectors(
 
 const terrain = createTerrain();
 const stream = createStream(sunDirection);
+const fish = createFish();
 const grass = createGrass();
 const flowers = createFlowers();
 const tree = createTree(collisionWorld);
+const birds = createBirds();
+tree.group.add(birds.group);
 const rocks = createRocks(collisionWorld);
 const forest = createPineForest();
 const mountains = createMountains();
@@ -143,10 +149,12 @@ const cloudSea = createCloudSea(sunsetDirection);
 const sunset = createSunset(sunsetDirection);
 const clouds = createClouds();
 const pollen = createPollen();
+const ambience = createAmbience();
 
 scene.add(
   terrain,
   stream.group,
+  fish.group,
   grass.mesh,
   flowers,
   tree.group,
@@ -195,6 +203,10 @@ function animate() {
   stream.update(elapsed);
   clouds.update(elapsed);
   pollen.update(elapsed);
+
+  fish.update(elapsed, delta, player.group.position);
+  birds.update(elapsed);
+  ambience.update(player.group.position);
 
   tree.foliage.rotation.z = Math.sin(elapsed * 0.55) * 0.008;
   tree.foliage.rotation.x = Math.sin(elapsed * 0.43 + 1.2) * 0.005;
