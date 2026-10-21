@@ -1,5 +1,8 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { createCollisionWorld } from "./physics/colliders.js";
+import { createInput } from "./player/input.js";
+import { createPlayer } from "./player/player.js";
 import { createClouds } from "./world/clouds.js";
 import { createFlowers } from "./world/flowers.js";
 import { createPineForest } from "./world/forest.js";
@@ -33,25 +36,39 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xb7cbda, 110, 690);
 
 const camera = new THREE.PerspectiveCamera(
-  46,
+  50,
   window.innerWidth / window.innerHeight,
   0.1,
   1500,
 );
-camera.position.set(8, getTerrainHeight(8, 15) + 2.15, 15);
+
+const collisionWorld = createCollisionWorld();
+const input = createInput();
+const player = createPlayer(5, 13, collisionWorld);
+scene.add(player.group);
+
+const followTarget = new THREE.Vector3(
+  player.group.position.x,
+  player.group.position.y + player.cameraAnchor,
+  player.group.position.z,
+);
+const cameraOffset = new THREE.Vector3(7, 3.2, 15);
 
 const controls = new OrbitControls(camera, renderer.domElement);
-controls.target.set(0, 9.2, HILL_CENTER_Z);
+controls.target.copy(followTarget);
+camera.position.copy(followTarget).add(cameraOffset);
 controls.enableDamping = true;
 controls.dampingFactor = 0.055;
 controls.enablePan = false;
-controls.minDistance = 7;
-controls.maxDistance = 62;
-controls.minPolarAngle = 0.42;
-controls.maxPolarAngle = Math.PI * 0.49;
+controls.minDistance = 5;
+controls.maxDistance = 30;
+controls.minPolarAngle = 0.5;
+controls.maxPolarAngle = Math.PI * 0.47;
 controls.rotateSpeed = 0.55;
 controls.zoomSpeed = 0.7;
 controls.update();
+
+const playerDelta = new THREE.Vector3();
 
 const sunDirection = new THREE.Vector3(-0.48, 0.72, 0.5).normalize();
 
@@ -76,12 +93,17 @@ sun.shadow.normalBias = 0.035;
 scene.add(sun);
 scene.add(sun.target);
 
+const sunOffset = new THREE.Vector3().subVectors(
+  sun.position,
+  sun.target.position,
+);
+
 const terrain = createTerrain();
 const stream = createStream(sunDirection);
 const grass = createGrass();
 const flowers = createFlowers();
-const tree = createTree();
-const rocks = createRocks();
+const tree = createTree(collisionWorld);
+const rocks = createRocks(collisionWorld);
 const forest = createPineForest();
 const mountains = createMountains();
 const clouds = createClouds();
@@ -104,7 +126,31 @@ const clock = new THREE.Clock();
 let hasRendered = false;
 
 function animate() {
-  const elapsed = clock.getElapsedTime();
+  const delta = clock.getDelta();
+  const elapsed = clock.elapsedTime;
+
+  player.update(input, camera, delta, elapsed);
+
+  followTarget.set(
+    player.group.position.x,
+    player.group.position.y + player.cameraAnchor,
+    player.group.position.z,
+  );
+  playerDelta.copy(followTarget).sub(controls.target);
+  controls.target.copy(followTarget);
+  camera.position.add(playerDelta);
+  controls.update();
+
+  const cameraFloor =
+    getTerrainHeight(camera.position.x, camera.position.z) + 0.75;
+  if (camera.position.y < cameraFloor) {
+    camera.position.y = cameraFloor;
+    camera.lookAt(controls.target);
+  }
+
+  sun.target.position.copy(player.group.position);
+  sun.target.updateMatrixWorld();
+  sun.position.copy(sun.target.position).add(sunOffset);
 
   grass.update(elapsed);
   stream.update(elapsed);
@@ -114,7 +160,6 @@ function animate() {
   tree.foliage.rotation.z = Math.sin(elapsed * 0.55) * 0.008;
   tree.foliage.rotation.x = Math.sin(elapsed * 0.43 + 1.2) * 0.005;
 
-  controls.update();
   renderer.render(scene, camera);
 
   if (!hasRendered) {

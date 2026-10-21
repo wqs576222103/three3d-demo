@@ -24,7 +24,7 @@ function createCylinderBetween(start, end, startRadius, endRadius, material) {
   return mesh;
 }
 
-export function createTree() {
+export function createTree(collisionWorld) {
   const tree = new THREE.Group();
   const trunkMaterial = new THREE.MeshStandardMaterial({
     color: 0x5e4530,
@@ -161,5 +161,6 @@ export function createTree() {
     getTerrainHeight(0, HILL_CENTER_Z) - 0.12,
     HILL_CENTER_Z,
   );
+  collisionWorld?.addCircle(0, HILL_CENTER_Z, 0.62);
   return { group: tree, foliage };
 }

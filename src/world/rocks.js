@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { mulberry32 } from "../utils/random.js";
 import { HILL_CENTER_Z, getTerrainHeight } from "./terrain.js";
 
-export function createRocks() {
+export function createRocks(collisionWorld) {
   const group = new THREE.Group();
   const random = mulberry32(0x0c0ffee);
   const geometry = new THREE.DodecahedronGeometry(1, 0);
@@ -34,20 +34,19 @@ export function createRocks() {
       geometry,
       materials[Math.floor(random() * materials.length)],
     );
+    const scaleX = scale * (1.1 + random() * 0.8);
+    const scaleZ = scale * (0.9 + random() * 0.6);
     rock.position.set(x, getTerrainHeight(x, z) + scale * 0.2, z);
     rock.rotation.set(
       random() * Math.PI,
       random() * Math.PI,
       random() * Math.PI,
     );
-    rock.scale.set(
-      scale * (1.1 + random() * 0.8),
-      scale * 0.7,
-      scale * (0.9 + random() * 0.6),
-    );
+    rock.scale.set(scaleX, scale * 0.7, scaleZ);
     rock.castShadow = true;
     rock.receiveShadow = true;
     group.add(rock);
+    collisionWorld?.addCircle(x, z, Math.max(scaleX, scaleZ) * 0.82);
   }
 
   return group;
