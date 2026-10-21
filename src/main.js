@@ -182,7 +182,7 @@ function animate() {
   sun.target.updateMatrixWorld();
   sun.position.copy(sun.target.position).add(sunOffset);
 
-  grass.update(elapsed);
+  grass.update(elapsed, player.group.position);
   stream.update(elapsed);
   clouds.update(elapsed);
   pollen.update(elapsed);

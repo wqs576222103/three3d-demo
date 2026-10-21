@@ -299,7 +299,14 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
 
     group.position.x = nextX;
     group.position.z = nextZ;
-    const ground = getGroundHeight(nextX, nextZ);
+    const terrainHeight = getGroundHeight(nextX, nextZ);
+    const rockHeight = collisionWorld?.getSupportHeight(
+      nextX,
+      nextZ,
+      group.position.y,
+      PLAYER_RADIUS * 0.35,
+    );
+    const ground = Math.max(terrainHeight, rockHeight);
 
     if (grounded && input.consumeJump()) {
       grounded = false;
@@ -307,8 +314,13 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     }
 
     if (grounded) {
-      group.position.y = ground;
-      verticalVelocity = 0;
+      if (group.position.y - ground > 0.3) {
+        grounded = false;
+        verticalVelocity = 0;
+      } else {
+        group.position.y = ground;
+        verticalVelocity = 0;
+      }
     } else {
       verticalVelocity -= GRAVITY * dt;
       group.position.y += verticalVelocity * dt;

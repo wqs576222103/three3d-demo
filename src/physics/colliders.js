@@ -52,5 +52,24 @@ export function createCollisionWorld() {
 
       return { x: resolvedX, z: resolvedZ, normalX, normalZ, hit };
     },
+    getSupportHeight(x, z, feetY, radius = 0) {
+      let support = Number.NEGATIVE_INFINITY;
+
+      for (let i = 0; i < circles.length; i += 1) {
+        const circle = circles[i];
+        if (!Number.isFinite(circle.topY)) {
+          continue;
+        }
+        if (feetY < circle.topY - 0.06) {
+          continue;
+        }
+        if (Math.hypot(x - circle.x, z - circle.z) > circle.radius + radius) {
+          continue;
+        }
+        support = Math.max(support, circle.topY);
+      }
+
+      return support;
+    },
   };
 }

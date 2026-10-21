@@ -52,6 +52,9 @@ export function createGrass() {
   const radius = 43;
   const geometry = createBladeGeometry();
   const timeUniform = { value: 0 };
+  const playerPositionUniform = { value: new THREE.Vector3(0, -100, 0) };
+  const playerRadiusUniform = { value: 1 };
+  const playerPushUniform = { value: 0.55 };
 
   const material = new THREE.MeshStandardMaterial({
     vertexColors: true,
@@ -63,12 +66,18 @@ export function createGrass() {
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uTime = timeUniform;
+    shader.uniforms.uPlayerPosition = playerPositionUniform;
+    shader.uniforms.uPlayerRadius = playerRadiusUniform;
+    shader.uniforms.uPlayerPush = playerPushUniform;
     shader.vertexShader = shader.vertexShader
       .replace(
         "#include <common>",
         `
           #include <common>
           uniform float uTime;
+          uniform vec3 uPlayerPosition;
+          uniform float uPlayerRadius;
+          uniform float uPlayerPush;
         `,
       )
       .replace(
@@ -84,6 +93,28 @@ export function createGrass() {
                        + sin(uTime * 2.65 + phase * 1.7) * 0.045;
             transformed.x += sway * bend;
             transformed.z += sway * 0.36 * bend;
+
+            vec2 toPlayer = instanceOrigin.xz - uPlayerPosition.xz;
+            float playerDistance = length(toPlayer);
+            float playerInfluence = 1.0 - smoothstep(
+              0.12,
+              uPlayerRadius,
+              playerDistance
+            );
+            playerInfluence *= playerInfluence;
+            float heightInfluence = 1.0 - smoothstep(
+              0.55,
+              1.5,
+              uPlayerPosition.y - instanceOrigin.y
+            );
+            float push = playerInfluence * heightInfluence * uPlayerPush * bend;
+            vec2 away = toPlayer / max(playerDistance, 0.0001);
+            vec2 localAway = vec2(
+              dot(away, normalize(instanceMatrix[0].xz)),
+              dot(away, normalize(instanceMatrix[2].xz))
+            );
+            transformed.x += localAway.x * push;
+            transformed.z += localAway.y * push;
           #endif
         `,
       );
@@ -135,8 +166,9 @@ export function createGrass() {
 
   return {
     mesh,
-    update(time) {
+    update(time, position) {
       timeUniform.value = time;
+      playerPositionUniform.value.copy(position);
     },
   };
 }
