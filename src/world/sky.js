@@ -6,10 +6,10 @@ export function createSky(sunDirection) {
     depthWrite: false,
     toneMapped: false,
     uniforms: {
-      uTop: { value: new THREE.Color(0x3d72b0) },
-      uHorizon: { value: new THREE.Color(0xd3e1e8) },
-      uHaze: { value: new THREE.Color(0xf1e8d7) },
-      uSunColor: { value: new THREE.Color(0xffdda1) },
+      uTop: { value: new THREE.Color(0x35679d) },
+      uHorizon: { value: new THREE.Color(0xeec49d) },
+      uHaze: { value: new THREE.Color(0xf4d5b0) },
+      uSunColor: { value: new THREE.Color(0xffc27a) },
       uSunDirection: { value: sunDirection },
     },
     vertexShader: `
@@ -34,7 +34,18 @@ export function createSky(sunDirection) {
         float gradient = pow(smoothstep(-0.02, 0.68, height), 0.72);
         vec3 color = mix(uHorizon, uTop, gradient);
         float lowSky = 1.0 - smoothstep(0.0, 0.32, height);
-        color = mix(color, uHaze, lowSky * 0.34);
+        color = mix(color, uHaze, lowSky * 0.4);
+        vec2 flatDirection =
+          direction.xz / max(length(direction.xz), 0.0001);
+        vec2 flatSun =
+          uSunDirection.xz / max(length(uSunDirection.xz), 0.0001);
+        float sunAzimuth = max(dot(flatDirection, flatSun), 0.0);
+        float horizonBand = 1.0 - smoothstep(0.0, 0.24, height);
+        color = mix(
+          color,
+          vec3(0.94, 0.55, 0.32),
+          pow(sunAzimuth, 3.0) * horizonBand * 0.3
+        );
         float sun = max(dot(direction, normalize(uSunDirection)), 0.0);
         color += uSunColor * pow(sun, 750.0) * 1.8;
         color += uSunColor * pow(sun, 14.0) * 0.13;

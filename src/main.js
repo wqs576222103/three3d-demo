@@ -4,6 +4,7 @@ import { createCollisionWorld } from "./physics/colliders.js";
 import { createInput } from "./player/input.js";
 import { createPlayer } from "./player/player.js";
 import { createClouds } from "./world/clouds.js";
+import { createCloudSea } from "./world/cloudSea.js";
 import { createFlowers } from "./world/flowers.js";
 import { createPineForest } from "./world/forest.js";
 import { createGrass } from "./world/grass.js";
@@ -12,6 +13,7 @@ import { createPollen } from "./world/pollen.js";
 import { createRocks } from "./world/rocks.js";
 import { createSky } from "./world/sky.js";
 import { createStream } from "./world/stream.js";
+import { createSunset } from "./world/sunset.js";
 import { createTerrain, HILL_CENTER_Z } from "./world/terrain.js";
 import { createTree } from "./world/tree.js";
 
@@ -29,7 +31,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 document.querySelector("#app").appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog(0xb7cbda, 110, 690);
+scene.fog = new THREE.Fog(0xd7c1ae, 110, 690);
 
 const camera = new THREE.PerspectiveCamera(
   50,
@@ -101,8 +103,9 @@ controls.update();
 const playerDelta = new THREE.Vector3();
 
 const sunDirection = new THREE.Vector3(-0.48, 0.72, 0.5).normalize();
+const sunsetDirection = new THREE.Vector3(-0.58, 0.13, 0.8).normalize();
 
-scene.add(createSky(sunDirection));
+scene.add(createSky(sunsetDirection));
 
 const hemisphere = new THREE.HemisphereLight(0xcfe5ff, 0x567044, 1.25);
 scene.add(hemisphere);
@@ -136,6 +139,8 @@ const tree = createTree(collisionWorld);
 const rocks = createRocks(collisionWorld);
 const forest = createPineForest();
 const mountains = createMountains();
+const cloudSea = createCloudSea(sunsetDirection);
+const sunset = createSunset(sunsetDirection);
 const clouds = createClouds();
 const pollen = createPollen();
 
@@ -148,6 +153,8 @@ scene.add(
   rocks,
   forest,
   mountains,
+  cloudSea.group,
+  sunset,
   clouds.group,
   pollen.points,
 );
@@ -181,7 +188,9 @@ function animate() {
   sun.target.position.copy(player.group.position);
   sun.target.updateMatrixWorld();
   sun.position.copy(sun.target.position).add(sunOffset);
+  sunset.position.copy(camera.position).addScaledVector(sunsetDirection, 800);
 
+  cloudSea.update(elapsed);
   grass.update(elapsed, player.group.position);
   stream.update(elapsed);
   clouds.update(elapsed);

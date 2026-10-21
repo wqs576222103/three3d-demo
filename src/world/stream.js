@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { mulberry32 } from "../utils/random.js";
 import {
+  TERRAIN_SIZE,
   WATER_LEVEL,
   getStreamCenterZ,
   getStreamSlope,
@@ -10,8 +11,8 @@ import {
 function createWater(sunDirection) {
   const steps = 320;
   const halfWidth = 4.7;
-  const startX = -212;
-  const endX = 212;
+  const startX = -TERRAIN_SIZE / 2;
+  const endX = TERRAIN_SIZE / 2;
   const positions = [];
   const uvs = [];
   const indices = [];
@@ -158,7 +159,7 @@ function createBanks() {
   const color = new THREE.Color();
 
   for (let i = 0; i < pebbleCount; i += 1) {
-    const x = -206 + random() * 412;
+    const x = -TERRAIN_SIZE / 2 + 2 + random() * (TERRAIN_SIZE - 4);
     const side = random() < 0.5 ? -1 : 1;
     const slope = getStreamSlope(x);
     const length = Math.hypot(1, slope);
@@ -205,7 +206,7 @@ function createBanks() {
   const reeds = new THREE.InstancedMesh(reedGeometry, reedMaterial, reedCount);
 
   for (let i = 0; i < reedCount; i += 1) {
-    const x = -205 + random() * 410;
+    const x = -TERRAIN_SIZE / 2 + 2 + random() * (TERRAIN_SIZE - 4);
     const side = random() < 0.5 ? -1 : 1;
     const slope = getStreamSlope(x);
     const length = Math.hypot(1, slope);
