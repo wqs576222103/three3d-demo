@@ -205,7 +205,7 @@ function animate() {
   pollen.update(elapsed);
 
   fish.update(elapsed, delta, player.group.position);
-  birds.update(elapsed);
+  birds.update(elapsed, delta);
   ambience.update(player.group.position);
 
   tree.foliage.rotation.z = Math.sin(elapsed * 0.55) * 0.008;
