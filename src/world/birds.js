@@ -12,21 +12,6 @@ function dampAngle(current, target, lambda, delta) {
   return current + difference * (1 - Math.exp(-lambda * delta));
 }
 
-function getRoutePosition(config, elapsed) {
-  const angle = config.phase + elapsed * config.speed;
-  const x =
-    config.centerX +
-    Math.cos(angle) * config.radiusX +
-    Math.sin(angle * 2 + config.phase) * config.swayX;
-  const z = config.centerZ + Math.sin(angle) * config.radiusZ;
-  const rise = (1 - Math.sin(angle)) * 0.5;
-  const y =
-    config.baseHeight +
-    rise * config.heightRise +
-    Math.sin(elapsed * config.bobSpeed + config.phase) * config.bobAmp;
-  return { x, y, z, angle };
-}
-
 function createBird(random) {
   const group = new THREE.Group();
   const bodyColor = BODY_COLORS[Math.floor(random() * BODY_COLORS.length)];
@@ -127,283 +112,408 @@ function createBird(random) {
   };
 }
 
-export function createBirds() {
+function buildFlightCurve(start, end, config) {
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const horizontal = Math.max(0.001, Math.hypot(dx, dz));
+  const dirX = dx / horizontal;
+  const dirZ = dz / horizontal;
+  const perpX = -dirZ;
+  const perpZ = dirX;
+  const side = config.sway * config.side;
+  const lift = Math.max(8, horizontal * 0.13);
+
+  const control1 = new THREE.Vector3(
+    start.x + perpX * side - dirX * 3,
+    start.y + lift,
+    start.z + perpZ * side - dirZ * 3,
+  );
+  const control2 = new THREE.Vector3(
+    end.x - perpX * side * 0.5 + dirX * 3,
+    end.y + lift * 0.72,
+    end.z - perpZ * side * 0.5 + dirZ * 3,
+  );
+
+  return new THREE.CubicBezierCurve3(
+    start.clone(),
+    control1,
+    control2,
+    end.clone(),
+  );
+}
+
+function getOrbitPoint(config, center, angle) {
+  return {
+    x:
+      center.x +
+      Math.cos(angle) * config.radiusX +
+      Math.sin(angle * 2 + config.phase) * 0.18,
+    y:
+      center.y +
+      config.heightOffset +
+      Math.sin(angle * 2 + config.phase) * config.bobAmp,
+    z: center.z + Math.sin(angle) * config.radiusZ,
+  };
+}
+
+export function createBirds({ homeTree, destinationTree }) {
   const group = new THREE.Group();
   const random = mulberry32(0xb14d5);
-  const longRoutes = [
+  const birds = [];
+  const shuttleBirds = [];
+  const treeFlyers = [];
+  const residentBirds = [];
+  const homeAnchors = homeTree.perches;
+  const destinationAnchors = destinationTree.perches;
+  const homeCenter = homeTree.group.position.clone();
+  homeCenter.y += 5.4 * homeTree.group.scale.x;
+
+  const shuttleConfigs = [
     {
-      centerX: 0,
-      centerZ: -58,
-      radiusX: 19,
-      radiusZ: 62,
-      swayX: 3.5,
-      baseHeight: 8.6,
-      heightRise: 10,
-      bobAmp: 0.35,
-      bobSpeed: 2.1,
-      speed: 0.19,
-      phase: 0.25,
-      flapSpeed: 21,
+      anchorIndex: 3,
+      startAt: "home",
+      timer: 1.8,
+      phase: 0.2,
       scale: 0.56,
+      flapSpeed: 21,
+      duration: 11.5,
+      sway: 6,
+      side: 1,
     },
     {
-      centerX: -5,
-      centerZ: -54,
-      radiusX: 15,
-      radiusZ: 58,
-      swayX: 2.5,
-      baseHeight: 9.4,
-      heightRise: 8,
-      bobAmp: 0.3,
-      bobSpeed: 2.5,
-      speed: 0.22,
-      phase: 1.55,
-      flapSpeed: 23,
+      anchorIndex: 4,
+      startAt: "home",
+      timer: 5.2,
+      phase: 1.1,
       scale: 0.5,
+      flapSpeed: 23,
+      duration: 12.8,
+      sway: 5.5,
+      side: -1,
     },
     {
-      centerX: 6,
-      centerZ: -61,
-      radiusX: 22,
-      radiusZ: 64,
-      swayX: 4,
-      baseHeight: 8.2,
-      heightRise: 12,
-      bobAmp: 0.4,
-      bobSpeed: 1.8,
-      speed: 0.17,
-      phase: 2.8,
-      flapSpeed: 19,
-      scale: 0.6,
-    },
-    {
-      centerX: -2,
-      centerZ: -57,
-      radiusX: 12,
-      radiusZ: 61,
-      swayX: 2,
-      baseHeight: 10,
-      heightRise: 9,
-      bobAmp: 0.3,
-      bobSpeed: 2.3,
-      speed: 0.21,
-      phase: 4,
-      flapSpeed: 22,
-      scale: 0.52,
-    },
-    {
-      centerX: 4,
-      centerZ: -60,
-      radiusX: 17,
-      radiusZ: 63,
-      swayX: 3,
-      baseHeight: 9,
-      heightRise: 11,
-      bobAmp: 0.36,
-      bobSpeed: 2,
-      speed: 0.18,
-      phase: 5.15,
-      flapSpeed: 20,
+      anchorIndex: 5,
+      startAt: "destination",
+      timer: 2.5,
+      phase: 2,
       scale: 0.58,
-    },
-    {
-      centerX: -7,
-      centerZ: -56,
-      radiusX: 20,
-      radiusZ: 60,
-      swayX: 3.5,
-      baseHeight: 8.8,
-      heightRise: 9,
-      bobAmp: 0.32,
-      bobSpeed: 2.6,
-      speed: 0.2,
-      phase: 0.95,
-      flapSpeed: 24,
-      scale: 0.48,
-    },
-    {
-      centerX: 2,
-      centerZ: -62,
-      radiusX: 14,
-      radiusZ: 65,
-      swayX: 2.6,
-      baseHeight: 9.8,
-      heightRise: 12,
-      bobAmp: 0.42,
-      bobSpeed: 1.9,
-      speed: 0.185,
-      phase: 3.45,
       flapSpeed: 20,
-      scale: 0.54,
+      duration: 12.2,
+      sway: 7,
+      side: 1,
     },
     {
-      centerX: 7,
-      centerZ: -55,
-      radiusX: 16,
-      radiusZ: 59,
-      swayX: 2.8,
-      baseHeight: 8.4,
-      heightRise: 10,
-      bobAmp: 0.34,
-      bobSpeed: 2.2,
-      speed: 0.23,
-      phase: 4.9,
+      anchorIndex: 6,
+      startAt: "destination",
+      timer: 6.4,
+      phase: 2.9,
+      scale: 0.52,
       flapSpeed: 22,
+      duration: 11,
+      sway: 5,
+      side: -1,
+    },
+    {
+      anchorIndex: 7,
+      startAt: "home",
+      timer: 8.6,
+      phase: 3.8,
+      scale: 0.54,
+      flapSpeed: 24,
+      duration: 13.5,
+      sway: 8,
+      side: -1,
+    },
+    {
+      anchorIndex: 8,
+      startAt: "destination",
+      timer: 9.5,
+      phase: 4.7,
       scale: 0.6,
+      flapSpeed: 19,
+      duration: 12.6,
+      sway: 6.5,
+      side: 1,
+    },
+    {
+      anchorIndex: 9,
+      startAt: "home",
+      timer: 12.2,
+      phase: 5.6,
+      scale: 0.48,
+      flapSpeed: 25,
+      duration: 10.5,
+      sway: 4.5,
+      side: 1,
+    },
+    {
+      anchorIndex: 10,
+      startAt: "destination",
+      timer: 13.8,
+      phase: 0.6,
+      scale: 0.55,
+      flapSpeed: 22,
+      duration: 13,
+      sway: 7.5,
+      side: -1,
     },
   ];
-  const treeRoutes = [
+  const orbitConfigs = [
     {
-      centerX: 0.3,
-      centerZ: 0.1,
       radiusX: 3.2,
       radiusZ: 2.8,
-      swayX: 0.15,
-      baseHeight: 5.2,
-      heightRise: 0.5,
-      bobAmp: 0.14,
-      bobSpeed: 2.4,
+      heightOffset: -0.3,
+      bobAmp: 0.2,
       speed: 0.9,
       phase: 0.4,
-      flapSpeed: 24,
       scale: 0.58,
+      flapSpeed: 24,
     },
     {
-      centerX: -0.4,
-      centerZ: -0.2,
       radiusX: 2.8,
       radiusZ: 3.1,
-      swayX: 0.2,
-      baseHeight: 6,
-      heightRise: 0.4,
-      bobAmp: 0.16,
-      bobSpeed: 2.1,
+      heightOffset: 0.5,
+      bobAmp: 0.25,
       speed: -1.1,
       phase: 2.2,
-      flapSpeed: 26,
       scale: 0.53,
+      flapSpeed: 26,
     },
     {
-      centerX: 0.2,
-      centerZ: 0.3,
       radiusX: 3.5,
       radiusZ: 2.5,
-      swayX: 0.18,
-      baseHeight: 4.6,
-      heightRise: 0.5,
-      bobAmp: 0.12,
-      bobSpeed: 2.8,
+      heightOffset: -0.8,
+      bobAmp: 0.18,
       speed: 0.72,
       phase: 4.6,
-      flapSpeed: 22,
       scale: 0.6,
+      flapSpeed: 22,
     },
   ];
-  const perches = [
-    { position: new THREE.Vector3(1.62, 3.99, 0.45), yaw: -0.7, scale: 0.54 },
-    { position: new THREE.Vector3(-1.42, 4.32, -0.35), yaw: 0.8, scale: 0.5 },
-    { position: new THREE.Vector3(2.27, 4.55, 0.02), yaw: 1.1, scale: 0.46 },
-  ];
-  const birds = [];
 
-  const addFlyer = (config) => {
-    const bird = createBird(random);
-    const start = getRoutePosition(config, 0);
-    const ahead = getRoutePosition(config, 0.06);
-    const horizontal = Math.hypot(ahead.x - start.x, ahead.z - start.z);
-    bird.group.scale.setScalar(config.scale);
-    bird.group.position.set(start.x, start.y, start.z);
-    bird.group.rotation.y = Math.atan2(ahead.x - start.x, ahead.z - start.z);
-    bird.group.rotation.x = THREE.MathUtils.clamp(
-      -Math.atan2(ahead.y - start.y, Math.max(horizontal, 0.001)) * 0.8,
-      -0.32,
-      0.32,
-    );
-    bird.kind = "flyer";
-    bird.config = config;
-    bird.lastX = start.x;
-    bird.lastY = start.y;
-    bird.lastZ = start.z;
-    birds.push(bird);
-    group.add(bird.group);
+  const setPerchedWings = (bird) => {
+    bird.wingLeftPivot.rotation.z = 0.72;
+    bird.wingRightPivot.rotation.z = -0.72;
   };
 
-  longRoutes.forEach(addFlyer);
-  treeRoutes.forEach(addFlyer);
-
-  perches.forEach((config) => {
+  shuttleConfigs.forEach((config) => {
     const bird = createBird(random);
-    bird.group.position.copy(config.position);
-    bird.group.rotation.y = config.yaw;
+    bird.kind = "shuttle";
     bird.group.scale.setScalar(config.scale);
-    bird.kind = "perched";
-    bird.config = config;
-    bird.phase = random() * Math.PI * 2;
+    bird.homeAnchor = homeAnchors[config.anchorIndex];
+    bird.destinationAnchor = destinationAnchors[config.anchorIndex];
+    bird.at = config.startAt;
+    bird.to = null;
+    bird.state = "perched";
+    bird.timer = config.timer;
+    bird.phase = config.phase;
+    bird.flapSpeed = config.flapSpeed;
+    bird.baseDuration = config.duration;
+    bird.sway = config.sway;
+    bird.side = config.side;
+    const anchor =
+      bird.at === "home" ? bird.homeAnchor : bird.destinationAnchor;
+    bird.group.position.copy(anchor.position);
+    bird.group.rotation.y = anchor.yaw;
+    setPerchedWings(bird);
+    shuttleBirds.push(bird);
     birds.push(bird);
     group.add(bird.group);
   });
+
+  orbitConfigs.forEach((config) => {
+    const bird = createBird(random);
+    const start = getOrbitPoint(config, homeCenter, config.phase);
+    const ahead = getOrbitPoint(config, homeCenter, config.phase + 0.05);
+    bird.kind = "orbit";
+    bird.config = config;
+    bird.group.scale.setScalar(config.scale);
+    bird.group.position.set(start.x, start.y, start.z);
+    bird.group.rotation.y = Math.atan2(ahead.x - start.x, ahead.z - start.z);
+    bird.lastX = start.x;
+    bird.lastY = start.y;
+    bird.lastZ = start.z;
+    treeFlyers.push(bird);
+    birds.push(bird);
+    group.add(bird.group);
+  });
+
+  homeAnchors.slice(0, 3).forEach((anchor, index) => {
+    const bird = createBird(random);
+    bird.kind = "resident";
+    bird.anchor = anchor;
+    bird.phase = random() * Math.PI * 2;
+    bird.group.scale.setScalar(0.46 + index * 0.025);
+    bird.group.position.copy(anchor.position);
+    bird.group.rotation.y = anchor.yaw;
+    setPerchedWings(bird);
+    residentBirds.push(bird);
+    birds.push(bird);
+    group.add(bird.group);
+  });
+
+  const startFlight = (bird) => {
+    const to = bird.at === "home" ? "destination" : "home";
+    const start =
+      bird.at === "home"
+        ? bird.homeAnchor.position
+        : bird.destinationAnchor.position;
+    const end =
+      to === "home"
+        ? bird.homeAnchor.position
+        : bird.destinationAnchor.position;
+    bird.curve = buildFlightCurve(start, end, bird);
+    bird.to = to;
+    bird.state = "flying";
+    bird.flightTime = 0;
+    bird.duration = bird.baseDuration * (0.92 + random() * 0.16);
+    const tangent = bird.curve.getTangent(0);
+    bird.group.rotation.y = Math.atan2(tangent.x, tangent.z);
+    bird.group.rotation.x = THREE.MathUtils.clamp(
+      -Math.atan2(tangent.y, Math.hypot(tangent.x, tangent.z)) * 0.9,
+      -0.55,
+      0.55,
+    );
+    bird.group.rotation.z = 0;
+  };
+
+  const finishFlight = (bird) => {
+    bird.state = "perched";
+    bird.at = bird.to;
+    bird.to = null;
+    const anchor =
+      bird.at === "home" ? bird.homeAnchor : bird.destinationAnchor;
+    bird.group.position.copy(anchor.position);
+    bird.group.rotation.set(0, anchor.yaw, 0);
+    bird.timer = bird.at === "home" ? 3.5 + random() * 4.5 : 5 + random() * 6;
+    setPerchedWings(bird);
+  };
+
+  const updateShuttle = (bird, elapsed, dt) => {
+    if (bird.state === "flying") {
+      bird.flightTime += dt;
+      const t = Math.min(1, bird.flightTime / bird.duration);
+      const position = bird.curve.getPoint(t);
+      const tangent = bird.curve.getTangent(t);
+      const horizontal = Math.hypot(tangent.x, tangent.z);
+      bird.group.position.copy(position);
+      bird.group.rotation.y = dampAngle(
+        bird.group.rotation.y,
+        Math.atan2(tangent.x, tangent.z),
+        6,
+        dt,
+      );
+      const targetPitch = THREE.MathUtils.clamp(
+        -Math.atan2(tangent.y, Math.max(horizontal, 0.001)) * 0.9,
+        -0.55,
+        0.55,
+      );
+      bird.group.rotation.x +=
+        (targetPitch - bird.group.rotation.x) * (1 - Math.exp(-6 * dt));
+      bird.group.rotation.z = Math.sin(elapsed * 1.1 + bird.phase) * 0.08;
+
+      const flap = Math.sin(elapsed * bird.flapSpeed + bird.phase) * 0.58;
+      bird.wingLeftPivot.rotation.z = -flap;
+      bird.wingRightPivot.rotation.z = flap;
+
+      if (t >= 1) {
+        finishFlight(bird);
+      }
+      return;
+    }
+
+    const anchor =
+      bird.at === "home" ? bird.homeAnchor : bird.destinationAnchor;
+    bird.group.position.set(
+      anchor.position.x + Math.sin(elapsed * 0.7 + bird.phase) * 0.02,
+      anchor.position.y +
+        Math.max(0, Math.sin(elapsed * 1.4 + bird.phase)) * 0.018,
+      anchor.position.z,
+    );
+    bird.group.rotation.y = dampAngle(
+      bird.group.rotation.y,
+      anchor.yaw + Math.sin(elapsed * 0.55 + bird.phase) * 0.14,
+      4,
+      dt,
+    );
+    bird.group.rotation.x +=
+      (0 - bird.group.rotation.x) * (1 - Math.exp(-5 * dt));
+    bird.group.rotation.z = Math.sin(elapsed * 1.05 + bird.phase) * 0.035;
+
+    const flutter =
+      Math.max(0, Math.sin(elapsed * 0.82 + bird.phase) - 0.74) / 0.26;
+    const flap = Math.sin(elapsed * 18 + bird.phase) * 0.45 * flutter;
+    bird.wingLeftPivot.rotation.z = 0.72 - flap;
+    bird.wingRightPivot.rotation.z = -0.72 + flap;
+
+    bird.timer -= dt;
+    if (bird.timer <= 0) {
+      startFlight(bird);
+    }
+  };
+
+  const updateOrbit = (bird, elapsed, dt) => {
+    const config = bird.config;
+    const angle = config.phase + elapsed * config.speed;
+    const current = getOrbitPoint(config, homeCenter, angle);
+    const dx = current.x - bird.lastX;
+    const dy = current.y - bird.lastY;
+    const dz = current.z - bird.lastZ;
+    const horizontal = Math.hypot(dx, dz);
+
+    bird.group.position.set(current.x, current.y, current.z);
+
+    if (horizontal > 0.00001) {
+      bird.group.rotation.y = dampAngle(
+        bird.group.rotation.y,
+        Math.atan2(dx, dz),
+        6,
+        dt,
+      );
+      const targetPitch = THREE.MathUtils.clamp(
+        -Math.atan2(dy, horizontal) * 0.8,
+        -0.32,
+        0.32,
+      );
+      bird.group.rotation.x +=
+        (targetPitch - bird.group.rotation.x) * (1 - Math.exp(-6 * dt));
+    }
+
+    bird.group.rotation.z = Math.sin(angle + config.phase) * 0.1;
+    const flap = Math.sin(elapsed * config.flapSpeed + config.phase) * 0.55;
+    bird.wingLeftPivot.rotation.z = -flap;
+    bird.wingRightPivot.rotation.z = flap;
+
+    bird.lastX = current.x;
+    bird.lastY = current.y;
+    bird.lastZ = current.z;
+  };
+
+  const updateResident = (bird, elapsed) => {
+    const { anchor } = bird;
+    const hop = Math.max(0, Math.sin(elapsed * 1.35 + bird.phase));
+    const flutter =
+      Math.max(0, Math.sin(elapsed * 0.82 + bird.phase) - 0.72) / 0.28;
+    const flap = Math.sin(elapsed * 18 + bird.phase) * 0.5 * flutter;
+    bird.group.position.set(
+      anchor.position.x + Math.sin(elapsed * 0.7 + bird.phase) * 0.022,
+      anchor.position.y + hop * 0.045,
+      anchor.position.z,
+    );
+    bird.group.rotation.y =
+      anchor.yaw + Math.sin(elapsed * 0.55 + bird.phase) * 0.16;
+    bird.group.rotation.z = Math.sin(elapsed * 1.1 + bird.phase) * 0.045;
+    bird.wingLeftPivot.rotation.z = 0.72 - flap;
+    bird.wingRightPivot.rotation.z = -0.72 + flap;
+  };
 
   return {
     group,
     update(elapsed, delta) {
       const dt = Math.min(delta, 0.05);
-
-      birds.forEach((bird) => {
-        if (bird.kind === "flyer") {
-          const config = bird.config;
-          const current = getRoutePosition(config, elapsed);
-          const dx = current.x - bird.lastX;
-          const dy = current.y - bird.lastY;
-          const dz = current.z - bird.lastZ;
-          const horizontal = Math.hypot(dx, dz);
-
-          bird.group.position.set(current.x, current.y, current.z);
-
-          if (horizontal > 0.00001) {
-            const targetYaw = Math.atan2(dx, dz);
-            bird.group.rotation.y = dampAngle(
-              bird.group.rotation.y,
-              targetYaw,
-              6,
-              dt,
-            );
-            const targetPitch = THREE.MathUtils.clamp(
-              -Math.atan2(dy, horizontal) * 0.8,
-              -0.32,
-              0.32,
-            );
-            bird.group.rotation.x +=
-              (targetPitch - bird.group.rotation.x) * (1 - Math.exp(-6 * dt));
-          }
-
-          bird.group.rotation.z = Math.sin(elapsed * 1.1 + config.phase) * 0.09;
-          const flap =
-            Math.sin(elapsed * config.flapSpeed + config.phase) * 0.55;
-          bird.wingLeftPivot.rotation.z = -flap;
-          bird.wingRightPivot.rotation.z = flap;
-
-          bird.lastX = current.x;
-          bird.lastY = current.y;
-          bird.lastZ = current.z;
-          return;
-        }
-
-        const { position, yaw } = bird.config;
-        const hop = Math.max(0, Math.sin(elapsed * 1.35 + bird.phase));
-        const flutter =
-          Math.max(0, Math.sin(elapsed * 0.82 + bird.phase) - 0.72) / 0.28;
-        const flap = Math.sin(elapsed * 18 + bird.phase) * 0.5 * flutter;
-        bird.group.position.set(
-          position.x + Math.sin(elapsed * 0.7 + bird.phase) * 0.022,
-          position.y + hop * 0.045,
-          position.z,
-        );
-        bird.group.rotation.y =
-          yaw + Math.sin(elapsed * 0.55 + bird.phase) * 0.16;
-        bird.group.rotation.z = Math.sin(elapsed * 1.1 + bird.phase) * 0.045;
-        bird.wingLeftPivot.rotation.z = 0.72 - flap;
-        bird.wingRightPivot.rotation.z = -0.72 + flap;
-      });
+      shuttleBirds.forEach((bird) => updateShuttle(bird, elapsed, dt));
+      treeFlyers.forEach((bird) => updateOrbit(bird, elapsed, dt));
+      residentBirds.forEach((bird) => updateResident(bird, elapsed));
     },
   };
 }

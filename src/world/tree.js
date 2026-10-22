@@ -24,7 +24,28 @@ function createCylinderBetween(start, end, startRadius, endRadius, material) {
   return mesh;
 }
 
-export function createTree(collisionWorld) {
+const PERCH_POINTS = [
+  { position: new THREE.Vector3(1.62, 3.99, 0.45), yaw: -0.7 },
+  { position: new THREE.Vector3(-1.42, 4.32, -0.35), yaw: 0.8 },
+  { position: new THREE.Vector3(2.27, 4.55, 0.02), yaw: 1.1 },
+  { position: new THREE.Vector3(1.25, 3.6, 0.3), yaw: 0.9 },
+  { position: new THREE.Vector3(-1.2, 4.07, -0.29), yaw: -1.2 },
+  { position: new THREE.Vector3(0.88, 4.99, -0.67), yaw: 2.4 },
+  { position: new THREE.Vector3(-0.86, 4.66, 0.72), yaw: 2.2 },
+  { position: new THREE.Vector3(1.48, 5.66, -0.33), yaw: -2 },
+  { position: new THREE.Vector3(0.8, 6.04, 0.8), yaw: 0 },
+  { position: new THREE.Vector3(-2.05, 4.95, -0.38), yaw: 1.4 },
+  { position: new THREE.Vector3(-1.43, 5.2, 0.36), yaw: -0.6 },
+];
+
+export function createTree(collisionWorld, options = {}) {
+  const {
+    x = 0,
+    z = HILL_CENTER_Z,
+    scale = 1,
+    seed = 0x7ee5,
+    collisionRadius = 0.62,
+  } = options;
   const tree = new THREE.Group();
   const trunkMaterial = new THREE.MeshStandardMaterial({
     color: 0x5e4530,
@@ -113,7 +134,7 @@ export function createTree(collisionWorld) {
   });
 
   const foliage = new THREE.Group();
-  const random = mulberry32(0x7ee5);
+  const random = mulberry32(seed);
   const leafGeometry = new THREE.IcosahedronGeometry(1, 1);
   const clusters = [];
 
@@ -156,11 +177,12 @@ export function createTree(collisionWorld) {
   });
 
   tree.add(foliage);
-  tree.position.set(
-    0,
-    getTerrainHeight(0, HILL_CENTER_Z) - 0.12,
-    HILL_CENTER_Z,
-  );
-  collisionWorld?.addCircle(0, HILL_CENTER_Z, 0.62);
-  return { group: tree, foliage };
+  tree.position.set(x, getTerrainHeight(x, z) - 0.12, z);
+  tree.scale.setScalar(scale);
+  collisionWorld?.addCircle(x, z, collisionRadius * scale);
+  const perches = PERCH_POINTS.map((perch) => ({
+    position: perch.position.clone().multiplyScalar(scale).add(tree.position),
+    yaw: perch.yaw,
+  }));
+  return { group: tree, foliage, perches };
 }

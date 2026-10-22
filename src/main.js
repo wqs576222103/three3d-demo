@@ -134,22 +134,44 @@ const sunOffset = new THREE.Vector3().subVectors(
   sun.target.position,
 );
 
+const MOUNTAIN_TREE_X = 18;
+const MOUNTAIN_TREE_Z = -104;
+
 const terrain = createTerrain();
 const stream = createStream(sunDirection);
 const fish = createFish();
 const grass = createGrass();
 const flowers = createFlowers();
 const tree = createTree(collisionWorld);
-const birds = createBirds();
-tree.group.add(birds.group);
+const mountainTree = createTree(collisionWorld, {
+  x: MOUNTAIN_TREE_X,
+  z: MOUNTAIN_TREE_Z,
+  scale: 1.08,
+  seed: 0x51a7e,
+  collisionRadius: 0.58,
+});
+const birds = createBirds({
+  homeTree: tree,
+  destinationTree: mountainTree,
+});
 const rocks = createRocks(collisionWorld);
-const forest = createPineForest();
+const forest = createPineForest({
+  clearings: [
+    {
+      x: MOUNTAIN_TREE_X,
+      z: MOUNTAIN_TREE_Z,
+      radius: 7,
+    },
+  ],
+});
 const mountains = createMountains();
 const cloudSea = createCloudSea(sunsetDirection);
 const sunset = createSunset(sunsetDirection);
 const clouds = createClouds();
 const pollen = createPollen();
-const ambience = createAmbience();
+const ambience = createAmbience({
+  birdTrees: [tree.group.position, mountainTree.group.position],
+});
 
 scene.add(
   terrain,
@@ -158,6 +180,8 @@ scene.add(
   grass.mesh,
   flowers,
   tree.group,
+  mountainTree.group,
+  birds.group,
   rocks,
   forest,
   mountains,

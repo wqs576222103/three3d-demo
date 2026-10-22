@@ -25,7 +25,7 @@ function createNoiseBuffer(context) {
   return buffer;
 }
 
-export function createAmbience() {
+export function createAmbience({ birdTrees = [] } = {}) {
   let context = null;
   let master = null;
   let riverLevel = null;
@@ -34,6 +34,9 @@ export function createAmbience() {
   let muted = false;
   let birdTimer = 0;
   let lastMixTime = -1;
+  const birdTreePositions = birdTrees.length
+    ? birdTrees
+    : [{ x: 0, z: HILL_CENTER_Z }];
 
   function playBirdNote(time, frequency, pan, duration) {
     const oscillator = context.createOscillator();
@@ -199,7 +202,13 @@ export function createAmbience() {
       const streamDistance = Math.abs(
         position.z - getStreamCenterZ(position.x),
       );
-      const treeDistance = Math.hypot(position.x, position.z - HILL_CENTER_Z);
+      let treeDistance = Infinity;
+      birdTreePositions.forEach((tree) => {
+        treeDistance = Math.min(
+          treeDistance,
+          Math.hypot(position.x - tree.x, position.z - tree.z),
+        );
+      });
       const streamFactor = 1 - smoothstep(8, 65, streamDistance);
       const treeFactor = 1 - smoothstep(10, 75, treeDistance);
       const now = context.currentTime;

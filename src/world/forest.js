@@ -3,7 +3,7 @@ import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { mulberry32 } from "../utils/random.js";
 import { getTerrainHeight } from "./terrain.js";
 
-export function createPineForest() {
+export function createPineForest({ clearings = [] } = {}) {
   const geometries = [];
   for (let i = 0; i < 3; i += 1) {
     const cone = new THREE.ConeGeometry(0.36 - i * 0.07, 0.58, 7);
@@ -27,8 +27,19 @@ export function createPineForest() {
   const color = new THREE.Color();
 
   for (let i = 0; i < count; i += 1) {
-    const x = (random() - 0.5) * 320;
-    const z = -72 - random() * 52;
+    let x = 0;
+    let z = 0;
+    let attempts = 0;
+    let blocked = true;
+    while (blocked && attempts < 24) {
+      x = (random() - 0.5) * 320;
+      z = -72 - random() * 52;
+      blocked = clearings.some(
+        (clearing) =>
+          Math.hypot(x - clearing.x, z - clearing.z) < clearing.radius,
+      );
+      attempts += 1;
+    }
     const y = getTerrainHeight(x, z);
     const scale = 2.4 + random() * 4.3;
 
