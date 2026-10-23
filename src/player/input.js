@@ -1,3 +1,5 @@
+const SHIFT_DOUBLE_TAP_MS = 400;
+
 const MOVEMENT_CODES = new Set([
   "ArrowUp",
   "ArrowDown",
@@ -12,13 +14,14 @@ const MOVEMENT_CODES = new Set([
   "ShiftRight",
   "ControlLeft",
   "ControlRight",
-  "KeyC",
 ]);
 
 export function createInput() {
   const held = new Set();
   let jumpQueued = false;
-  let crouched = false;
+  let prone = false;
+  let runMode = false;
+  let lastShiftTap = -Infinity;
 
   const onKeyDown = (event) => {
     if (MOVEMENT_CODES.has(event.code)) {
@@ -30,11 +33,21 @@ export function createInput() {
     }
     if (
       !event.repeat &&
-      (event.code === "ControlLeft" ||
-        event.code === "ControlRight" ||
-        event.code === "KeyC")
+      (event.code === "ShiftLeft" || event.code === "ShiftRight")
     ) {
-      crouched = !crouched;
+      const now = performance.now();
+      if (now - lastShiftTap <= SHIFT_DOUBLE_TAP_MS) {
+        runMode = !runMode;
+        lastShiftTap = -Infinity;
+      } else {
+        lastShiftTap = now;
+      }
+    }
+    if (
+      !event.repeat &&
+      (event.code === "ControlLeft" || event.code === "ControlRight")
+    ) {
+      prone = !prone;
     }
   };
 
@@ -45,6 +58,7 @@ export function createInput() {
   const onBlur = () => {
     held.clear();
     jumpQueued = false;
+    lastShiftTap = -Infinity;
   };
 
   window.addEventListener("keydown", onKeyDown);
@@ -65,10 +79,10 @@ export function createInput() {
       return held.has("ArrowRight") || held.has("KeyD");
     },
     get sprint() {
-      return held.has("ShiftLeft") || held.has("ShiftRight");
+      return runMode || held.has("ShiftLeft") || held.has("ShiftRight");
     },
-    get crouch() {
-      return crouched;
+    get prone() {
+      return prone;
     },
     consumeJump() {
       const queued = jumpQueued;

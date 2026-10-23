@@ -9,7 +9,7 @@ import {
 
 const WALK_SPEED = 4.2;
 const RUN_SPEED = 9.6;
-const CROUCH_SPEED = 1.8;
+const CRAWL_SPEED = 1;
 const JUMP_SPEED = 6.3;
 const GRAVITY = 19;
 const PLAYER_RADIUS = 0.3;
@@ -235,13 +235,13 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       wish.normalize();
     }
 
-    const crouching = input.crouch;
+    const crouching = input.prone;
     const groundBefore = getGroundHeight(group.position.x, group.position.z);
     const wading = groundBefore < WATER_LEVEL - 0.2;
     let targetSpeed = 0;
     if (moving) {
       if (crouching) {
-        targetSpeed = CROUCH_SPEED;
+        targetSpeed = CRAWL_SPEED;
       } else if (input.sprint) {
         targetSpeed = RUN_SPEED;
       } else {
@@ -308,7 +308,8 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     );
     const ground = Math.max(terrainHeight, rockHeight);
 
-    if (grounded && input.consumeJump()) {
+    const jumpRequested = input.consumeJump();
+    if (grounded && jumpRequested) {
       grounded = false;
       verticalVelocity = JUMP_SPEED;
     }
@@ -489,7 +490,6 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       8,
       dt,
     );
-
     return { grounded, speed };
   }
 
