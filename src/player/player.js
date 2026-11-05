@@ -493,9 +493,21 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     return { grounded, speed };
   }
 
+  function teleport(x, y, z, facingY) {
+    group.position.set(x, y, z);
+    horizontalVelocity.set(0, 0);
+    verticalVelocity = 0;
+    grounded = true;
+    if (facingY !== undefined) {
+      facing = facingY;
+      group.rotation.y = facingY;
+    }
+  }
+
   return {
     group,
     update,
+    teleport,
     get grounded() {
       return grounded;
     },

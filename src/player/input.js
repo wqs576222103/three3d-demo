@@ -9,6 +9,7 @@ const MOVEMENT_CODES = new Set([
   "KeyA",
   "KeyS",
   "KeyD",
+  "KeyE",
   "Space",
   "ShiftLeft",
   "ShiftRight",
@@ -19,6 +20,7 @@ const MOVEMENT_CODES = new Set([
 export function createInput() {
   const held = new Set();
   let jumpQueued = false;
+  let interactQueued = false;
   let prone = false;
   let runMode = false;
   let lastShiftTap = -Infinity;
@@ -30,6 +32,9 @@ export function createInput() {
     held.add(event.code);
     if (event.code === "Space" && !event.repeat) {
       jumpQueued = true;
+    }
+    if (event.code === "KeyE" && !event.repeat) {
+      interactQueued = true;
     }
     if (
       !event.repeat &&
@@ -58,6 +63,7 @@ export function createInput() {
   const onBlur = () => {
     held.clear();
     jumpQueued = false;
+    interactQueued = false;
     lastShiftTap = -Infinity;
   };
 
@@ -87,6 +93,11 @@ export function createInput() {
     consumeJump() {
       const queued = jumpQueued;
       jumpQueued = false;
+      return queued;
+    },
+    consumeInteract() {
+      const queued = interactQueued;
+      interactQueued = false;
       return queued;
     },
     dispose() {

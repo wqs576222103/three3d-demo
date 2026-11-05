@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createAmbience } from "./audio/ambience.js";
+import { createInteraction } from "./game/interaction.js";
 import { createCollisionWorld } from "./physics/colliders.js";
 import { createInput } from "./player/input.js";
 import { createPlayer } from "./player/player.js";
@@ -11,6 +12,7 @@ import { createFish } from "./world/fish.js";
 import { createFlowers } from "./world/flowers.js";
 import { createPineForest } from "./world/forest.js";
 import { createGrass } from "./world/grass.js";
+import { createHut } from "./world/hut.js";
 import { createMountains, getGroundHeight } from "./world/mountains.js";
 import { createPollen } from "./world/pollen.js";
 import { createRocks } from "./world/rocks.js";
@@ -140,7 +142,8 @@ const MOUNTAIN_TREE_Z = -104;
 const terrain = createTerrain();
 const stream = createStream(sunDirection);
 const fish = createFish();
-const grass = createGrass();
+const hut = createHut(collisionWorld);
+const grass = createGrass({ clearings: [hut.clearing] });
 const flowers = createFlowers();
 const tree = createTree(collisionWorld);
 const mountainTree = createTree(collisionWorld, {
@@ -179,6 +182,7 @@ scene.add(
   fish.group,
   grass.mesh,
   flowers,
+  hut.group,
   tree.group,
   mountainTree.group,
   birds.group,
@@ -194,11 +198,22 @@ scene.add(
 const clock = new THREE.Clock();
 let hasRendered = false;
 
+const interaction = createInteraction({
+  player,
+  camera,
+  controls,
+  input,
+  hut,
+  promptEl: document.querySelector("#prompt"),
+  overlayEl: document.querySelector("#sleep-overlay"),
+});
+
 function animate() {
   const delta = clock.getDelta();
   const elapsed = clock.elapsedTime;
 
   player.update(input, camera, delta, elapsed);
+  interaction.update(delta);
 
   followTarget.set(
     player.group.position.x,
@@ -216,6 +231,8 @@ function animate() {
     camera.position.y = cameraFloor;
     camera.lookAt(controls.target);
   }
+
+  interaction.postCamera();
 
   sun.target.position.copy(player.group.position);
   sun.target.updateMatrixWorld();

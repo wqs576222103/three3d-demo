@@ -47,7 +47,7 @@ function createBladeGeometry() {
   return geometry;
 }
 
-export function createGrass() {
+export function createGrass({ clearings = [] } = {}) {
   const count = 120000;
   const radius = 43;
   const geometry = createBladeGeometry();
@@ -133,6 +133,14 @@ export function createGrass() {
     const z = HILL_CENTER_Z + Math.sin(angle) * distance;
 
     if (Math.abs(z - getStreamCenterZ(x)) < 7) {
+      continue;
+    }
+
+    if (
+      clearings.some(
+        (clearing) => Math.hypot(x - clearing.x, z - clearing.z) < clearing.radius,
+      )
+    ) {
       continue;
     }
 
