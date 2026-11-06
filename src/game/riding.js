@@ -44,7 +44,7 @@ export function createRiding({ player, animals, collisionWorld }) {
     left.setRidden(false);
     ridden = null;
 
-    // 从左侧下马，落点先避开躯干，再交给碰撞系统推出障碍
+    // 从牲口右侧下马，落点先避开躯干，再交给碰撞系统推出障碍
     const p = left.group.position;
     const heading = left.heading;
     const offset = -left.flankOffset;
@@ -69,11 +69,13 @@ export function createRiding({ player, animals, collisionWorld }) {
     if (input.forward) throttle = 1;
     else if (input.backward) throttle = -1;
 
+    // heading = atan2(前向.x, 前向.z)，增大机头会扫向牲口自身左侧，所以向右压键要减 heading
     let turn = 0;
-    if (input.left) turn -= 1;
-    if (input.right) turn += 1;
+    if (input.left) turn += 1;
+    if (input.right) turn -= 1;
 
     ridden.setDrive({ throttle, turn, sprint: input.sprint });
+    if (input.consumeJump()) ridden.jump();
   }
 
   return {
@@ -87,6 +89,9 @@ export function createRiding({ player, animals, collisionWorld }) {
     },
     get label() {
       return ridden ? ridden.label : "";
+    },
+    get canJump() {
+      return ridden ? ridden.canJump : false;
     },
     get mount() {
       return ridden;

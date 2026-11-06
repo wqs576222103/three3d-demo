@@ -215,11 +215,9 @@ const interaction = createInteraction({
   overlayEl: document.querySelector("#sleep-overlay"),
 });
 
-// __DEBUG_HOOK__
-window.__dbg = { player, interaction, hut, camera, controls, input, THREE, collisionWorld, animals, riding, getGroundHeight };
-
 function animate() {
-  const delta = clock.getDelta();
+  // 骑马疾奔一步将近 1 米，卡帧回来时必须补上小步长，否则会从树和墙里穿过去
+  const delta = Math.min(clock.getDelta(), 1 / 30);
   const elapsed = clock.elapsedTime;
 
   player.update(input, camera, delta, elapsed);

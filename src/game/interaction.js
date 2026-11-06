@@ -246,12 +246,15 @@ export function createInteraction({
     } else if (sitting) {
       shown = "按 E 起身";
     } else if (riding.active) {
-      shown = fade ? "" : `骑乘中 · 按 E 从${riding.label}上下来`;
+      shown = fade
+        ? ""
+        : `骑乘中 · WASD 驾驭${riding.canJump ? " · 空格 跳" : ""} · 按 E 从${riding.label}上下来`;
     } else if (!fade) {
       const p = player.group.position;
       const mount = riding.findMount(p);
-      if (mount) shown = `按 E 骑上${mount.label}`;
-      else if (mode === "inside") {
+      if (mount) {
+        shown = `按 E 骑上${mount.label}${mount.hint ? ` · ${mount.hint}` : ""}`;
+      } else if (mode === "inside") {
         if (hut.isNearBed(p.x, p.z)) shown = "按 E 睡觉";
         else if (distXZ(p, hut.stoolAnchor) < 1.25) shown = "按 E 坐下休息";
         else if (distXZ(p, hut.doorInside) < 1.7) shown = "按 E 走出茅草屋";

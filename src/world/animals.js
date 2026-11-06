@@ -328,6 +328,9 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
     earFlick: 0,
     rippleTimer: 0,
     rippleSide: 1,
+    lift: 0,
+    jumpVel: 0,
+    airborne: false,
   };
 
   const depthAt = (x, z) => WATER_LEVEL - getGroundHeight(x, z);
@@ -382,17 +385,32 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
     if (throttle > 0) {
       wishSpeed = sprint ? profile.run : profile.cruise;
     } else if (throttle < 0) {
-      wishSpeed = -profile.back;
+      // 倒车和前进一个速度，只是方向相反
+      wishSpeed = -(sprint ? profile.run : profile.cruise);
     }
     actor.speed = damp(actor.speed, wishSpeed, wishSpeed === 0 ? 3.8 : 2.1, dt);
 
     // 停下来时转不动：转向权限跟速度挂钩，避免原地打转
     const authority = clamp01(Math.abs(actor.speed) / 2.2);
-    const gears = throttle < 0 ? -1 : 1;
-    actor.heading += turn * cfg.turnRate * authority * gears * dt;
+    // 速度越过 8 后收紧方向，否则一按就甩尾：
+    // 满速转弯半径约 26 米，慢走时仍保留 5 米的小半径好在小院里掉头
+    const grip = 1 / (1 + Math.max(0, Math.abs(actor.speed) - 8) * 0.06);
+    // 倒车时不翻转方向键：按 A 马头始终往左摆，和前进时同一套直觉
+    actor.heading += turn * cfg.turnRate * authority * grip * dt;
 
     actor.feed.level = damp(actor.feed.level, 0, 3.4, dt);
     return actor.feed.level;
+  }
+
+  function stepJump(dt) {
+    if (!actor.airborne) return;
+    actor.jumpVel -= cfg.jump.gravity * dt;
+    actor.lift += actor.jumpVel * dt;
+    if (actor.lift <= 0) {
+      actor.lift = 0;
+      actor.jumpVel = 0;
+      actor.airborne = false;
+    }
   }
 
   function move(dt) {
@@ -401,7 +419,8 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
     nextX = THREE.MathUtils.clamp(nextX, -MAP_HALF_X, MAP_HALF_X);
     nextZ = THREE.MathUtils.clamp(nextZ, MAP_MIN_Z, MAP_MAX_Z);
 
-    if (collisionWorld) {
+    // 腾空时不受树干和礁石阻挡，跳过去就是跳过去
+    if (collisionWorld && !actor.airborne) {
       const hit = collisionWorld.resolve(nextX, nextZ, cfg.collideRadius, actor.y);
       if (hit.hit) {
         nextX = hit.x;
@@ -412,24 +431,32 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
 
     actor.x = nextX;
     actor.z = nextZ;
-    actor.y = getGroundHeight(nextX, nextZ);
+    actor.y = getGroundHeight(nextX, nextZ) + actor.lift;
   }
 
   function animate(elapsed, dt, headDown, inWater) {
     const stride = clamp01(Math.abs(actor.speed) / cfg.strideRef);
-    actor.phase += dt * (2.4 + Math.abs(actor.speed) * 1.15);
+    actor.phase +=
+      dt * (2.4 + Math.min(Math.abs(actor.speed), cfg.strideRef) * 1.15);
 
     model.legs.forEach((leg) => {
       const swing = Math.sin(actor.phase + leg.phase);
-      const hipTarget = swing * (0.1 + 0.62 * stride);
-      const kneeTarget = 0.06 + Math.max(0, swing) * (0.16 + stride);
+      const front = leg.hip.position.z > 0;
+      let hipTarget = swing * (0.1 + 0.62 * stride);
+      let kneeTarget = 0.06 + Math.max(0, swing) * (0.16 + stride);
+      if (actor.airborne) {
+        hipTarget = front ? -0.5 : 0.44;
+        kneeTarget = front ? 1.18 : 0.3;
+      }
       leg.hip.rotation.x = damp(leg.hip.rotation.x, hipTarget, 14, dt);
       leg.knee.rotation.x = damp(leg.knee.rotation.x, kneeTarget, 14, dt);
     });
 
     model.neck.rotation.x = damp(
       model.neck.rotation.x,
-      THREE.MathUtils.lerp(cfg.headUp, cfg.headDown, headDown),
+      actor.airborne
+        ? cfg.headUp
+        : THREE.MathUtils.lerp(cfg.headUp, cfg.headDown, headDown),
       4.2,
       dt,
     );
@@ -482,6 +509,7 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
   return {
     group: model.group,
     label: cfg.label,
+    hint: cfg.hint || "",
     flankOffset: cfg.flankOffset,
     get heading() {
       return actor.heading;
@@ -491,6 +519,15 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
     },
     get speed() {
       return actor.speed;
+    },
+    get canJump() {
+      return Boolean(cfg.jump);
+    },
+    jump() {
+      if (!cfg.jump || actor.airborne) return false;
+      actor.airborne = true;
+      actor.jumpVel = cfg.jump.velocity;
+      return true;
     },
     distanceTo(point) {
       return Math.hypot(actor.x - point.x, actor.z - point.z);
@@ -502,6 +539,9 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
       if (!on) {
         actor.feed.mode = "rest";
         actor.feed.timer = 2.2;
+        actor.lift = 0;
+        actor.jumpVel = 0;
+        actor.airborne = false;
       }
     },
     setDrive(drive) {
@@ -546,6 +586,7 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
         }
       }
 
+      stepJump(dt);
       move(dt);
       model.group.position.set(actor.x, actor.y, actor.z);
       model.group.rotation.y = actor.heading;
@@ -558,19 +599,20 @@ function createMountActor({ build, cfg, spawn, collisionWorld, ripples, rng }) {
 
 const BUFFALO_CFG = {
   label: "水牛",
+  hint: "下水比岸上快一倍",
   collideRadius: 0.82,
   flankOffset: 1.2,
   saddle: { x: 0, y: 1.05, z: 0.02 },
-  turnRate: 1.3,
+  turnRate: 1.5,
   idleWalk: 0.55,
   roamRadius: 6,
   attentionRadius: 6,
   headDown: 0.92,
   headUp: -0.12,
   strideRef: 11,
-  // 水牛泡在河里才自在：涉水比玩家在水里快得多，岸上反而笨重
-  land: { cruise: 4.4, run: 7.2, back: 1.6 },
-  water: { cruise: 7.6, run: 10.8, back: 2.6 },
+  // 泡在河里才是水牛的主场，岸上拖着身子走：水中正好是岸上的两倍
+  land: { cruise: 7, run: 12 },
+  water: { cruise: 14, run: 22 },
 };
 
 const HORSE_CFG = {
@@ -579,14 +621,17 @@ const HORSE_CFG = {
   flankOffset: 0.95,
   saddle: { x: 0, y: 1.0, z: -0.02 },
   turnRate: 1.8,
+  // 腾起 1.2 米、滞空 0.7 秒，快马疾奔时正好跨过一块礁石
+  jump: { velocity: 6.8, gravity: 19 },
   idleWalk: 0.6,
   roamRadius: 8,
   attentionRadius: 6.5,
   headDown: 1.05,
   headUp: -0.05,
   strideRef: 14,
-  land: { cruise: 6.4, run: 14.2, back: 2.2 },
-  water: { cruise: 3.4, run: 4.8, back: 1.4 },
+  // 马是陆地主力，全速接近玩家奔跑的 2.5 倍；涉水仍慢，但不再比人趟水还慢
+  land: { cruise: 11, run: 24 },
+  water: { cruise: 6.5, run: 8.5 },
 };
 
 export function createAnimals({ collisionWorld = null } = {}) {
