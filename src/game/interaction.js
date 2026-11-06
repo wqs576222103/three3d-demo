@@ -43,27 +43,34 @@ export function createInteraction({
     if (overlayTextEl && text !== undefined) overlayTextEl.textContent = text;
   }
 
+  // 屋内镜头的可用距离区间：postCamera 每帧按墙距收紧，避免与
+  // OrbitControls 的最小距离互相拉扯（表现为靠墙时镜头抖动感）。
+  let camMinDistance = outsideLimits.min;
+  let camMaxDistance = outsideLimits.max;
+
   function setInsideCamera(on) {
     if (on) {
-      // 放宽距离，避免进门瞬间镜头被拉到角色前面（会造成操作方向感反转）
-      controls.minDistance = 1.0;
-      controls.maxDistance = 4.5;
+      camMinDistance = 0.6;
+      camMaxDistance = 4.5;
       controls.minPolarAngle = 0.6;
       controls.maxPolarAngle = Math.PI * 0.49;
     } else {
-      controls.minDistance = outsideLimits.min;
-      controls.maxDistance = outsideLimits.max;
+      camMinDistance = outsideLimits.min;
+      camMaxDistance = outsideLimits.max;
       controls.minPolarAngle = outsideLimits.minPolar;
       controls.maxPolarAngle = outsideLimits.maxPolar;
     }
+    controls.minDistance = camMinDistance;
+    controls.maxDistance = camMaxDistance;
   }
 
-  // 躺下后不用顾虑"前进方向反了"（移动已锁定），放开俯仰与距离，
-  // 让镜头能绕着床自由转一圈。
-  function setSleepCamera(on) {
+  // 坐着或躺着时移动已锁定，不用顾虑"前进方向反了"，
+  // 放开俯仰、距离与偏航，镜头能绕着人自由转一圈。
+  function setRestCamera(on) {
     controls.minPolarAngle = on ? 0.22 : 0.6;
     controls.maxPolarAngle = on ? Math.PI * 0.62 : Math.PI * 0.49;
-    controls.maxDistance = on ? 5.6 : 4.5;
+    camMinDistance = on ? 0.35 : 0.6;
+    camMaxDistance = on ? 5.6 : 4.5;
   }
 
   const _target = new THREE.Vector3();
@@ -87,11 +94,13 @@ export function createInteraction({
     player.teleport(s.x, s.y, s.z, s.facing);
     player.setSitting(true);
     sitting = true;
+    setRestCamera(true);
   }
 
   function standUp() {
     player.setSitting(false);
     sitting = false;
+    setRestCamera(false);
     const p = player.group.position;
     player.teleport(p.x, p.y, p.z, player.group.rotation.y);
   }
@@ -147,22 +156,19 @@ export function createInteraction({
     player.teleport(bed.x, bed.y, bed.z, bed.facing);
     player.setSleeping(true);
     sleeping = true;
-    setSleepCamera(true);
+    setRestCamera(true);
     beginFade({
       out: 0.45,
       hold: 1.2,
       inn: 0.6,
       message: "睡眠中…",
-      onDone: () => {
-        toast = { text: "睡了个好觉，精神焕发", t: 2.6 };
-      },
     });
   }
 
   function wakeUp() {
     player.setSleeping(false);
     sleeping = false;
-    setSleepCamera(false);
+    setRestCamera(false);
     const p = player.group.position;
     player.teleport(p.x, hut.floorY, p.z, player.group.rotation.y);
     setOverlay(0, "");
@@ -246,20 +252,29 @@ export function createInteraction({
     return x;
   }
 
-  function roomLimitAlong(dir, t) {
-    const b = hut.bounds;
-    const axisLimit = (o, dv, min, max) => {
-      if (Math.abs(dv) < 1e-6) return o >= min && o <= max ? Infinity : 0;
-      return dv > 0 ? (max - o) / dv : (min - o) / dv;
-    };
-    return Math.max(
-      0.7,
-      Math.min(
-        axisLimit(t.x, dir.x, b.minX, b.maxX),
-        axisLimit(t.y, dir.y, b.minY, b.maxY),
-        axisLimit(t.z, dir.z, b.minZ, b.maxZ),
-      ),
-    );
+  // 镜头可停留的空间：屋内 + 门洞走廊。沿射线逐段推进取并集，
+  // 这样站在门口时镜头能退到门框里，而不是被北墙挤到角色身上。
+  const _zones = [hut.cameraBounds, hut.doorCorridor];
+
+  const inZone = (b, x, y, z) =>
+    x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY && z >= b.minZ && z <= b.maxZ;
+
+  function freeDistanceAlong(dir, t) {
+    if (!_zones.some((b) => inZone(b, t.x, t.y, t.z))) {
+      // 目标点本身不在任何可停留空间（站在门框正中间时可能发生），
+      // 这一帧先不做距离压缩，避免镜头被压进角色身体。
+      return Infinity;
+    }
+    const step = 0.1;
+    let dist = 0;
+    for (let i = 0; i < 96; i += 1) {
+      const next = dist + step;
+      if (!_zones.some((b) => inZone(b, t.x + dir.x * next, t.y + dir.y * next, t.z + dir.z * next))) {
+        break;
+      }
+      dist = next;
+    }
+    return dist;
   }
 
   // 保留鼠标轨道结果，只做两件事：偏航限位 + 距离被屋墙压缩。
@@ -277,8 +292,8 @@ export function createInteraction({
     _sph.setFromVector3(_off);
     if (!Number.isFinite(_sph.theta)) _sph.theta = Math.PI;
 
-    // 只有需要 WASD 操作时才限制偏航，睡觉中移动已锁定，可以任意环绕
-    if (!sleeping) {
+    // 只有需要 WASD 操作时才限制偏航，坐下/睡觉中移动已锁定，可以任意环绕
+    if (!sleeping && !sitting) {
       const back = player.group.rotation.y + Math.PI;
       const drift = wrapAngle(_sph.theta - back);
       if (Math.abs(drift) > AZIMUTH_SLACK) {
@@ -286,10 +301,13 @@ export function createInteraction({
       }
     }
     _sph.makeSafe();
-    _sph.radius = Math.max(
-      0.7,
-      Math.min(_sph.radius, roomLimitAlong(_off.setFromSpherical(_sph).normalize(), _target)),
-    );
+    const limit = Math.max(0.3, freeDistanceAlong(_off.setFromSpherical(_sph).normalize(), _target));
+    // 屋内空间不足时以墙为准，否则 OrbitControls 的最小距离会把镜头
+    // 又顶回墙外，靠墙转动就成了一段一段的抖动。
+    const minDistance = Math.min(camMinDistance, limit);
+    controls.minDistance = minDistance;
+    controls.maxDistance = Math.max(minDistance, camMaxDistance);
+    _sph.radius = Math.max(minDistance, Math.min(_sph.radius, limit));
 
     controls.target.copy(_target);
     camera.position.setFromSpherical(_sph).add(_target);

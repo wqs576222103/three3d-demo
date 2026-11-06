@@ -5,13 +5,13 @@ import { getTerrainHeight } from "./terrain.js";
 export const HUT_ORIGIN = { x: -8, z: -36 };
 
 const HUT = {
-  width: 7.0, // 沿 X
-  depth: 6.0, // 沿 Z
-  wallHeight: 2.9,
+  width: 9.0, // 沿 X
+  depth: 7.8, // 沿 Z
+  wallHeight: 3.5,
   wallThickness: 0.16,
-  doorWidth: 1.6,
-  doorHeight: 2.1,
-  roofRise: 1.8,
+  doorWidth: 1.8,
+  doorHeight: 2.35,
+  roofRise: 2.0,
   roofOverhang: 0.55,
   floorThickness: 0.3,
 };
@@ -165,9 +165,16 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
 
   // 室内地板支撑：让主角站在木地板高度，而不是下沉到地形
   const supportR = 1.7;
-  for (let gx = -1; gx <= 1; gx += 1) {
-    for (let gz = -1; gz <= 1; gz += 1) {
-      collisionWorld?.addCircle(position.x + gx * 1.9, position.z + gz * 1.7, supportR, floorY);
+  const supportOffsets = (half, step) => {
+    const offsets = [0];
+    for (let v = step; v <= half + step * 0.5; v += step) {
+      offsets.push(v, -v);
+    }
+    return offsets;
+  };
+  for (const sx of supportOffsets(hw, 1.9)) {
+    for (const sz of supportOffsets(hd, 1.7)) {
+      collisionWorld?.addCircle(position.x + sx, position.z + sz, supportR, floorY);
     }
   }
 
@@ -188,10 +195,10 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
     const a = (i / 3) * Math.PI * 2;
     stool.add(box(0.06, 0.44, 0.06, materials.woodDark, Math.cos(a) * 0.17, 0.22, Math.sin(a) * 0.17));
   }
-  stool.position.set(-hw + 0.85, 0, 0.9);
-  group.add(stool);
-  const stoolLocalX = -hw + 0.85;
+  const stoolLocalX = -hw + 2.3;
   const stoolLocalZ = 0.9;
+  stool.position.set(stoolLocalX, 0, stoolLocalZ);
+  group.add(stool);
 
   // 吊灯 + 暖光
   const lanternY = HUT.wallHeight - 0.5;
@@ -278,8 +285,28 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
     maxY: floorY + HUT.wallHeight - 0.25,
   };
 
-  const insideTest = (px, pz) =>
-    Math.abs(px - position.x) < hw - t * 0.5 && Math.abs(pz - position.z) < hd - t * 0.5;
+  // 镜头可达范围：比可行动范围更贴近墙面，屋内才容得下原地环绕
+  const cameraBounds = {
+    minX: position.x - hw + t,
+    maxX: position.x + hw - t,
+    minZ: position.z - hd + t,
+    maxZ: position.z + hd - t,
+    minY: floorY + 0.25,
+    maxY: floorY + HUT.wallHeight - 0.1,
+  };
+
+  // 门洞走廊：门口这一段镜头可以退到门框内乃至门外平台上，否则进门时
+  // 北墙会把镜头挤到角色身上（视角会突然翻到前面）。
+  const doorCorridor = {
+    minX: position.x - 1.0,
+    maxX: position.x + 1.0,
+    minZ: position.z - hd - 2.6,
+    maxZ: position.z - hd + 0.4,
+    minY: floorY - 0.7,
+    maxY: floorY + HUT.wallHeight - 0.1,
+  };
+
+  const insideTest = (px, pz) =>    Math.abs(px - position.x) < hw - t * 0.5 && Math.abs(pz - position.z) < hd - t * 0.5;
 
   return {
     group,
@@ -292,6 +319,8 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
     stoolAnchor,
     sitPoint,
     bounds,
+    cameraBounds,
+    doorCorridor,
     isInside: insideTest,
     clearing: { x: position.x, z: position.z, radius: Math.max(hw, hd) + 1.8 },
   };

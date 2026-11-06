@@ -31,7 +31,8 @@ export function createAmbience({ birdTrees = [] } = {}) {
   let riverLevel = null;
   let birdLevel = null;
   let started = false;
-  let muted = false;
+  // 默认静音，按 M 才开启环境音
+  let muted = true;
   let birdTimer = 0;
   let lastMixTime = -1;
   const birdTreePositions = birdTrees.length
