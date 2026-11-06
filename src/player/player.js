@@ -213,6 +213,7 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
   let cameraAnchor = 1.55;
   let sitting = false;
   let sleeping = false;
+  let riding = false;
 
   // 躺姿：躯干放平（rotation.x≈-90°），沿床长轴展开，脸朝上
   const LIE_ROT_X = -Math.PI / 2 - 0.12;
@@ -361,8 +362,94 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     cameraAnchor = THREE.MathUtils.damp(cameraAnchor, 1.15, 8, dt);
   }
 
+  // 骑乘姿态：大腿前伸夹住畜身、小腿下垂踩鞍，双手前伸握缰。
+  // 位置由骑乘模块贴在鞍位上，这里只管姿态与随步的轻微起伏。
+  const RIDE_HIP = -1.12;
+  const RIDE_KNEE = 1.18;
+
+  function applyRidePose(dt, elapsed) {
+    const damping = 12;
+    character.legLeft.rotation.x = THREE.MathUtils.damp(
+      character.legLeft.rotation.x,
+      RIDE_HIP - 0.05,
+      damping,
+      dt,
+    );
+    character.legRight.rotation.x = THREE.MathUtils.damp(
+      character.legRight.rotation.x,
+      RIDE_HIP + 0.05,
+      damping,
+      dt,
+    );
+    character.kneeLeft.rotation.x = THREE.MathUtils.damp(
+      character.kneeLeft.rotation.x,
+      RIDE_KNEE,
+      damping,
+      dt,
+    );
+    character.kneeRight.rotation.x = THREE.MathUtils.damp(
+      character.kneeRight.rotation.x,
+      RIDE_KNEE - 0.08,
+      damping,
+      dt,
+    );
+    character.armLeft.rotation.x = THREE.MathUtils.damp(
+      character.armLeft.rotation.x,
+      -1.1,
+      damping,
+      dt,
+    );
+    character.armRight.rotation.x = THREE.MathUtils.damp(
+      character.armRight.rotation.x,
+      -1.16,
+      damping,
+      dt,
+    );
+    character.elbowLeft.rotation.x = THREE.MathUtils.damp(
+      character.elbowLeft.rotation.x,
+      -0.62,
+      damping,
+      dt,
+    );
+    character.elbowRight.rotation.x = THREE.MathUtils.damp(
+      character.elbowRight.rotation.x,
+      -0.62,
+      damping,
+      dt,
+    );
+
+    const bounce = Math.sin(elapsed * 6.4) * 0.02;
+    character.visual.position.y = THREE.MathUtils.damp(
+      character.visual.position.y,
+      bounce,
+      12,
+      dt,
+    );
+    character.visual.rotation.x = THREE.MathUtils.damp(
+      character.visual.rotation.x,
+      0.14,
+      8,
+      dt,
+    );
+    character.visual.rotation.z = THREE.MathUtils.damp(
+      character.visual.rotation.z,
+      Math.sin(elapsed * 3.2) * 0.022,
+      8,
+      dt,
+    );
+    cameraAnchor = THREE.MathUtils.damp(cameraAnchor, 1.5, 8, dt);
+  }
+
   function update(input, camera, delta, elapsed) {
     const dt = Math.min(delta, 0.05);
+
+    if (riding) {
+      horizontalVelocity.set(0, 0);
+      verticalVelocity = 0;
+      grounded = true;
+      applyRidePose(dt, elapsed);
+      return { grounded: true, speed: 0 };
+    }
 
     if (sleeping) {
       horizontalVelocity.set(0, 0);
@@ -649,6 +736,12 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       8,
       dt,
     );
+    character.visual.rotation.z = THREE.MathUtils.damp(
+      character.visual.rotation.z,
+      0,
+      10,
+      dt,
+    );
     cameraAnchor = THREE.MathUtils.damp(
       cameraAnchor,
       crouching ? 1.15 : 1.55,
@@ -692,12 +785,28 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     }
   }
 
+  // 骑乘中角色的位移完全交给鞍位同步，这里只锁住物理并切到骑姿
+  function setRiding(on) {
+    riding = on;
+    if (on) {
+      sitting = false;
+      sleeping = false;
+      horizontalVelocity.set(0, 0);
+      verticalVelocity = 0;
+      grounded = true;
+    } else {
+      verticalVelocity = 0;
+      grounded = false;
+    }
+  }
+
   return {
     group,
     update,
     teleport,
     setSitting,
     setSleeping,
+    setRiding,
     get grounded() {
       return grounded;
     },
@@ -706,6 +815,9 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     },
     get sleeping() {
       return sleeping;
+    },
+    get riding() {
+      return riding;
     },
     get speed() {
       return horizontalVelocity.length();

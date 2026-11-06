@@ -10,6 +10,7 @@ export function createInteraction({
   controls,
   input,
   hut,
+  riding,
   promptEl,
   overlayEl,
 }) {
@@ -186,6 +187,20 @@ export function createInteraction({
       standUp();
       return;
     }
+    if (riding.active) {
+      beginFade({ out: 0.14, hold: 0, inn: 0.24, mid: riding.dismount });
+      return;
+    }
+    const mount = riding.findMount(p);
+    if (mount) {
+      beginFade({
+        out: 0.16,
+        hold: 0,
+        inn: 0.26,
+        mid: () => riding.mountOn(mount),
+      });
+      return;
+    }
     if (!inside) return;
     if (hut.isNearBed(p.x, p.z)) {
       startSleep();
@@ -203,13 +218,16 @@ export function createInteraction({
       if (toast.t <= 0) toast = null;
     }
 
-    const inside = hut.isInside(player.group.position.x, player.group.position.z);
+    const px = player.group.position.x;
+    const pz = player.group.position.z;
+    // 骑在牲口上时不进屋接管镜头：马头探进门框就会把相机压进屋里
+    const inside = !riding.active && hut.isInside(px, pz);
 
     if (!fade && input.consumeInteract()) {
       handleInteract(inside);
     }
 
-    const nowInside = hut.isInside(player.group.position.x, player.group.position.z);
+    const nowInside = inside;
     if (nowInside !== (mode === "inside")) {
       mode = nowInside ? "inside" : "outside";
       setInsideCamera(nowInside);
@@ -227,9 +245,13 @@ export function createInteraction({
       shown = fade ? "" : "睡眠中 · 按 E 起床";
     } else if (sitting) {
       shown = "按 E 起身";
+    } else if (riding.active) {
+      shown = fade ? "" : `骑乘中 · 按 E 从${riding.label}上下来`;
     } else if (!fade) {
       const p = player.group.position;
-      if (mode === "inside") {
+      const mount = riding.findMount(p);
+      if (mount) shown = `按 E 骑上${mount.label}`;
+      else if (mode === "inside") {
         if (hut.isNearBed(p.x, p.z)) shown = "按 E 睡觉";
         else if (distXZ(p, hut.stoolAnchor) < 1.25) shown = "按 E 坐下休息";
         else if (distXZ(p, hut.doorInside) < 1.7) shown = "按 E 走出茅草屋";

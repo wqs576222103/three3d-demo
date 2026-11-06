@@ -2,9 +2,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createAmbience } from "./audio/ambience.js";
 import { createInteraction } from "./game/interaction.js";
+import { createRiding } from "./game/riding.js";
 import { createCollisionWorld } from "./physics/colliders.js";
 import { createInput } from "./player/input.js";
 import { createPlayer } from "./player/player.js";
+import { createAnimals } from "./world/animals.js";
 import { createBirds } from "./world/birds.js";
 import { createClouds } from "./world/clouds.js";
 import { createCloudSea } from "./world/cloudSea.js";
@@ -158,6 +160,7 @@ const birds = createBirds({
   destinationTree: mountainTree,
 });
 const rocks = createRocks(collisionWorld);
+const animals = createAnimals({ collisionWorld });
 const forest = createPineForest({
   clearings: [
     {
@@ -186,6 +189,7 @@ scene.add(
   tree.group,
   mountainTree.group,
   birds.group,
+  animals.group,
   rocks,
   forest,
   mountains,
@@ -198,15 +202,21 @@ scene.add(
 const clock = new THREE.Clock();
 let hasRendered = false;
 
+const riding = createRiding({ player, animals, collisionWorld });
+
 const interaction = createInteraction({
   player,
   camera,
   controls,
   input,
   hut,
+  riding,
   promptEl: document.querySelector("#prompt"),
   overlayEl: document.querySelector("#sleep-overlay"),
 });
+
+// __DEBUG_HOOK__
+window.__dbg = { player, interaction, hut, camera, controls, input, THREE, collisionWorld, animals, riding, getGroundHeight };
 
 function animate() {
   const delta = clock.getDelta();
@@ -214,6 +224,12 @@ function animate() {
 
   player.update(input, camera, delta, elapsed);
   interaction.update(delta);
+
+  // 骑乘指令 → 动物自主移动 → 把骑手钉回鞍位，顺序不能颠倒，
+  // 否则下面的相机跟随会拿到上一帧的马背位置。
+  riding.update(input);
+  animals.update(elapsed, delta, player.group.position);
+  riding.sync();
 
   followTarget.set(
     player.group.position.x,
