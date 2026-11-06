@@ -1,5 +1,7 @@
 export function createCollisionWorld() {
   const circles = [];
+  // 允许主角直接走上去的台阶高度；顶面在此范围内视为可落脚，而非空气墙
+  const STEP_UP = 0.5;
 
   return {
     addCircle(x, z, radius, topY = Number.POSITIVE_INFINITY) {
@@ -16,7 +18,7 @@ export function createCollisionWorld() {
         for (let i = 0; i < circles.length; i += 1) {
           const circle = circles[i];
 
-          if (feetY >= circle.topY - 0.06) {
+          if (circle.topY <= feetY + STEP_UP) {
             continue;
           }
 
@@ -60,7 +62,7 @@ export function createCollisionWorld() {
         if (!Number.isFinite(circle.topY)) {
           continue;
         }
-        if (feetY < circle.topY - 0.06) {
+        if (circle.topY > feetY + STEP_UP) {
           continue;
         }
         if (Math.hypot(x - circle.x, z - circle.z) > circle.radius + radius) {

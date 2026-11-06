@@ -24,6 +24,7 @@ export function createInteraction({
 
   let mode = "outside";
   let sleeping = false;
+  let sitting = false;
   let fade = null;
   let toast = null;
   let currentPrompt = null;
@@ -44,8 +45,9 @@ export function createInteraction({
 
   function setInsideCamera(on) {
     if (on) {
-      controls.minDistance = 1.2;
-      controls.maxDistance = 3.4;
+      // 放宽距离，避免进门瞬间镜头被拉到角色前面（会造成操作方向感反转）
+      controls.minDistance = 1.0;
+      controls.maxDistance = 4.5;
       controls.minPolarAngle = 0.6;
       controls.maxPolarAngle = Math.PI * 0.49;
     } else {
@@ -56,22 +58,15 @@ export function createInteraction({
     }
   }
 
-  const _target = new THREE.Vector3();
-
-  // 室内镜头放在角色身后，避免被夹到角色前面导致方向感反转
-  function frameInsideCamera() {
-    const p = player.group.position;
-    _target.set(p.x, p.y + player.cameraAnchor, p.z);
-    controls.target.copy(_target);
-    const rotY = player.group.rotation.y;
-    const behindX = -Math.sin(rotY);
-    const behindZ = -Math.cos(rotY);
-    camera.position.set(
-      _target.x + behindX * 2.5,
-      _target.y + 0.9,
-      _target.z + behindZ * 2.5,
-    );
+  // 躺下后不用顾虑"前进方向反了"（移动已锁定），放开俯仰与距离，
+  // 让镜头能绕着床自由转一圈。
+  function setSleepCamera(on) {
+    controls.minPolarAngle = on ? 0.22 : 0.6;
+    controls.maxPolarAngle = on ? Math.PI * 0.62 : Math.PI * 0.49;
+    controls.maxDistance = on ? 5.6 : 4.5;
   }
+
+  const _target = new THREE.Vector3();
 
   function frameOutsideCamera() {
     const p = player.group.position;
@@ -80,16 +75,25 @@ export function createInteraction({
     camera.position.copy(_target).add(new THREE.Vector3(0, 2.2, 6.5));
   }
 
-  function enterHut() {
-    const e = hut.enterPoint;
-    player.teleport(e.x, e.y, e.z, 0);
-    frameInsideCamera();
+  // 走进门时保持角色的位置与朝向，只把高度抬到地板；不做任何方向修正
+  function stepInside() {
+    const p = player.group.position;
+    player.teleport(p.x, hut.floorY, p.z, player.group.rotation.y);
   }
 
-  function stepInside() {
-    const e = hut.enterPoint;
-    player.teleport(e.x, e.y, e.z, player.group.rotation.y);
-    frameInsideCamera();
+  function sitDown() {
+    const s = hut.sitPoint;
+    player.setSitting(false);
+    player.teleport(s.x, s.y, s.z, s.facing);
+    player.setSitting(true);
+    sitting = true;
+  }
+
+  function standUp() {
+    player.setSitting(false);
+    sitting = false;
+    const p = player.group.position;
+    player.teleport(p.x, p.y, p.z, player.group.rotation.y);
   }
 
   function exitHut() {
@@ -129,37 +133,60 @@ export function createInteraction({
     if (fade.t >= out + hold + inn) {
       const done = fade.onDone;
       fade = null;
-      setOverlay(0, "");
+      // 睡觉状态保持一层暗幕，直到按 E 起床
+      setOverlay(sleeping ? 0.6 : 0, sleeping ? "睡眠中…" : "");
       if (done) done();
     }
   }
 
+  // 上床睡觉：锁定移动，只有再按 E 才能起床
   function startSleep() {
+    const bed = hut.bedLiePoint;
+    player.setSitting(false);
+    sitting = false;
+    player.teleport(bed.x, bed.y, bed.z, bed.facing);
+    player.setSleeping(true);
     sleeping = true;
+    setSleepCamera(true);
     beginFade({
-      out: 0.9,
-      hold: 1.7,
-      inn: 1.1,
+      out: 0.45,
+      hold: 1.2,
+      inn: 0.6,
       message: "睡眠中…",
       onDone: () => {
-        sleeping = false;
         toast = { text: "睡了个好觉，精神焕发", t: 2.6 };
       },
     });
   }
 
+  function wakeUp() {
+    player.setSleeping(false);
+    sleeping = false;
+    setSleepCamera(false);
+    const p = player.group.position;
+    player.teleport(p.x, hut.floorY, p.z, player.group.rotation.y);
+    setOverlay(0, "");
+
+    toast = { text: "睡醒了，伸个懒腰", t: 2.2 };
+  }
+
   function handleInteract(inside) {
     const p = player.group.position;
-    if (!inside && distXZ(p, hut.doorOutside) < 1.9) {
-      beginFade({ out: 0.3, hold: 0.06, inn: 0.42, mid: enterHut });
+    if (sleeping) {
+      wakeUp();
       return;
     }
-    if (inside) {
-      if (distXZ(p, hut.bedAnchor) < 1.35) {
-        startSleep();
-      } else if (distXZ(p, hut.doorInside) < 1.7) {
-        beginFade({ out: 0.28, hold: 0.06, inn: 0.42, mid: exitHut });
-      }
+    if (sitting) {
+      standUp();
+      return;
+    }
+    if (!inside) return;
+    if (hut.isNearBed(p.x, p.z)) {
+      startSleep();
+    } else if (distXZ(p, hut.stoolAnchor) < 1.25) {
+      sitDown();
+    } else if (distXZ(p, hut.doorInside) < 1.7) {
+      beginFade({ out: 0.28, hold: 0.06, inn: 0.42, mid: exitHut });
     }
   }
 
@@ -172,7 +199,7 @@ export function createInteraction({
 
     const inside = hut.isInside(player.group.position.x, player.group.position.z);
 
-    if (!fade && !sleeping && input.consumeInteract()) {
+    if (!fade && input.consumeInteract()) {
       handleInteract(inside);
     }
 
@@ -180,11 +207,9 @@ export function createInteraction({
     if (nowInside !== (mode === "inside")) {
       mode = nowInside ? "inside" : "outside";
       setInsideCamera(nowInside);
-      if (fade) {
-        if (!nowInside) frameOutsideCamera();
-      } else if (nowInside) {
-        beginFade({ out: 0.16, hold: 0, inn: 0.34, mid: stepInside });
-      } else {
+      if (nowInside) {
+        if (!fade) stepInside();
+      } else if (!fade) {
         frameOutsideCamera();
       }
     }
@@ -192,25 +217,83 @@ export function createInteraction({
     let shown = "";
     if (toast) {
       shown = toast.text;
-    } else if (!fade && !sleeping) {
+    } else if (sleeping) {
+      shown = fade ? "" : "睡眠中 · 按 E 起床";
+    } else if (sitting) {
+      shown = "按 E 起身";
+    } else if (!fade) {
       const p = player.group.position;
       if (mode === "inside") {
-        if (distXZ(p, hut.bedAnchor) < 1.35) shown = "按 E 睡觉";
+        if (hut.isNearBed(p.x, p.z)) shown = "按 E 睡觉";
+        else if (distXZ(p, hut.stoolAnchor) < 1.25) shown = "按 E 坐下休息";
         else if (distXZ(p, hut.doorInside) < 1.7) shown = "按 E 走出茅草屋";
-      } else if (distXZ(p, hut.doorOutside) < 1.9) {
-        shown = "按 E 进入茅草屋";
       }
     }
     setPrompt(shown);
   }
 
+  const _off = new THREE.Vector3();
+  const _sph = new THREE.Spherical();
+
+  // 镜头偏航相对角色背向的最大偏离：鼠标可以自由环绕，
+  // 但永远不会绕到角色前面导致前进方向感觉反了。
+  const AZIMUTH_SLACK = 1.4;
+
+  function wrapAngle(a) {
+    let x = a;
+    while (x > Math.PI) x -= Math.PI * 2;
+    while (x < -Math.PI) x += Math.PI * 2;
+    return x;
+  }
+
+  function roomLimitAlong(dir, t) {
+    const b = hut.bounds;
+    const axisLimit = (o, dv, min, max) => {
+      if (Math.abs(dv) < 1e-6) return o >= min && o <= max ? Infinity : 0;
+      return dv > 0 ? (max - o) / dv : (min - o) / dv;
+    };
+    return Math.max(
+      0.7,
+      Math.min(
+        axisLimit(t.x, dir.x, b.minX, b.maxX),
+        axisLimit(t.y, dir.y, b.minY, b.maxY),
+        axisLimit(t.z, dir.z, b.minZ, b.maxZ),
+      ),
+    );
+  }
+
+  // 保留鼠标轨道结果，只做两件事：偏航限位 + 距离被屋墙压缩。
   function postCamera() {
     if (mode !== "inside") return;
-    const b = hut.bounds;
-    camera.position.x = THREE.MathUtils.clamp(camera.position.x, b.minX, b.maxX);
-    camera.position.z = THREE.MathUtils.clamp(camera.position.z, b.minZ, b.maxZ);
-    camera.position.y = THREE.MathUtils.clamp(camera.position.y, b.minY, b.maxY);
-    camera.lookAt(controls.target);
+
+    const p = player.group.position;
+    // 躺下时把注视点压到躯干高度，绕床环绕才不会被顶到屋顶
+    _target.set(p.x, p.y + (sleeping ? -0.1 : player.cameraAnchor), p.z);
+
+    _off.copy(camera.position).sub(controls.target);
+    if (_off.lengthSq() < 1e-4) {
+      _off.set(0, 1.2, -2);
+    }
+    _sph.setFromVector3(_off);
+    if (!Number.isFinite(_sph.theta)) _sph.theta = Math.PI;
+
+    // 只有需要 WASD 操作时才限制偏航，睡觉中移动已锁定，可以任意环绕
+    if (!sleeping) {
+      const back = player.group.rotation.y + Math.PI;
+      const drift = wrapAngle(_sph.theta - back);
+      if (Math.abs(drift) > AZIMUTH_SLACK) {
+        _sph.theta = back + Math.sign(drift) * AZIMUTH_SLACK;
+      }
+    }
+    _sph.makeSafe();
+    _sph.radius = Math.max(
+      0.7,
+      Math.min(_sph.radius, roomLimitAlong(_off.setFromSpherical(_sph).normalize(), _target)),
+    );
+
+    controls.target.copy(_target);
+    camera.position.setFromSpherical(_sph).add(_target);
+    camera.lookAt(_target);
   }
 
   return {
@@ -221,6 +304,9 @@ export function createInteraction({
     },
     get sleeping() {
       return sleeping;
+    },
+    get sitting() {
+      return sitting;
     },
   };
 }

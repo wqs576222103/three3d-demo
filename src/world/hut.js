@@ -190,6 +190,8 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
   }
   stool.position.set(-hw + 0.85, 0, 0.9);
   group.add(stool);
+  const stoolLocalX = -hw + 0.85;
+  const stoolLocalZ = 0.9;
 
   // 吊灯 + 暖光
   const lanternY = HUT.wallHeight - 0.5;
@@ -229,14 +231,43 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
   addWall(-hw, hd, hw, hd); // 南
   addWall(hw, -hd, hw, hd); // 东
   addWall(-hw, -hd, -hw, hd); // 西
-  addWall(-hw, -hd, hw, -hd, doorHalf + 0.02); // 北（门洞）
+  addWall(-hw, -hd, hw, -hd, doorHalf + 0.45); // 北（门洞，留出可通行宽度）
 
   // 交互锚点（世界坐标）
-  const enterPoint = new THREE.Vector3(position.x, floorY, position.z - hd + 1.8);
   const exitPoint = new THREE.Vector3(position.x, getTerrainHeight(position.x, position.z - hd - 1.3), position.z - hd - 1.3);
-  const bedAnchor = new THREE.Vector3(position.x + bedX, floorY, position.z + bedZ - 1.45);
-  const doorOutside = new THREE.Vector3(position.x, 0, position.z - hd - 1.0);
   const doorInside = new THREE.Vector3(position.x, 0, position.z - hd + 0.9);
+
+  // 床：可交互区域（床的左右两侧与床尾都算"走近了床"）
+  const bedZone = {
+    minX: position.x + bedX - 1.55,
+    maxX: position.x + bedX + 1.55,
+    minZ: position.z + bedZ - 1.75,
+    maxZ: position.z + bedZ + 0.95,
+  };
+  const isNearBed = (px, pz) =>
+    px > bedZone.minX && px < bedZone.maxX && pz > bedZone.minZ && pz < bedZone.maxZ;
+
+  // 躺下落点放在床尾、facing 取 π：人物放倒后头顶沿世界 +Z 展开，
+  // 正好朝床头（南墙）那一侧，脸朝上。
+  const bedLiePoint = {
+    x: position.x + bedX,
+    y: floorY + 0.85,
+    z: position.z + bedZ - 1.0,
+    facing: Math.PI,
+  };
+
+  // 小凳：坐下位置与朝向（面朝屋内 +X 方向）
+  const stoolAnchor = new THREE.Vector3(
+    position.x + stoolLocalX,
+    floorY,
+    position.z + stoolLocalZ,
+  );
+  const sitPoint = {
+    x: position.x + stoolLocalX,
+    y: floorY,
+    z: position.z + stoolLocalZ,
+    facing: Math.PI / 2,
+  };
 
   const bounds = {
     minX: position.x - hw + 0.5,
@@ -253,11 +284,13 @@ export function createHut(collisionWorld, position = HUT_ORIGIN) {
   return {
     group,
     floorY,
-    enterPoint,
     exitPoint,
-    bedAnchor,
-    doorOutside,
+    bedZone,
+    isNearBed,
+    bedLiePoint,
     doorInside,
+    stoolAnchor,
+    sitPoint,
     bounds,
     isInside: insideTest,
     clearing: { x: position.x, z: position.z, radius: Math.max(hw, hd) + 1.8 },

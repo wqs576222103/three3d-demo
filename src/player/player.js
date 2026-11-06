@@ -211,9 +211,174 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
   let facing = Math.PI;
   let walkPhase = 0;
   let cameraAnchor = 1.55;
+  let sitting = false;
+  let sleeping = false;
+
+  // 躺姿：躯干放平（rotation.x≈-90°），沿床长轴展开，脸朝上
+  const LIE_ROT_X = -Math.PI / 2 - 0.12;
+
+  function applyLiePose(dt) {
+    const damping = 6;
+    character.legLeft.rotation.x = THREE.MathUtils.damp(
+      character.legLeft.rotation.x,
+      0.05,
+      damping,
+      dt,
+    );
+    character.legRight.rotation.x = THREE.MathUtils.damp(
+      character.legRight.rotation.x,
+      0.05,
+      damping,
+      dt,
+    );
+    character.kneeLeft.rotation.x = THREE.MathUtils.damp(
+      character.kneeLeft.rotation.x,
+      0.05,
+      damping,
+      dt,
+    );
+    character.kneeRight.rotation.x = THREE.MathUtils.damp(
+      character.kneeRight.rotation.x,
+      0.05,
+      damping,
+      dt,
+    );
+    character.armLeft.rotation.x = THREE.MathUtils.damp(
+      character.armLeft.rotation.x,
+      -0.15,
+      damping,
+      dt,
+    );
+    character.armRight.rotation.x = THREE.MathUtils.damp(
+      character.armRight.rotation.x,
+      -0.15,
+      damping,
+      dt,
+    );
+    character.elbowLeft.rotation.x = THREE.MathUtils.damp(
+      character.elbowLeft.rotation.x,
+      -0.1,
+      damping,
+      dt,
+    );
+    character.elbowRight.rotation.x = THREE.MathUtils.damp(
+      character.elbowRight.rotation.x,
+      -0.1,
+      damping,
+      dt,
+    );
+    character.visual.rotation.x = THREE.MathUtils.damp(
+      character.visual.rotation.x,
+      LIE_ROT_X,
+      damping,
+      dt,
+    );
+    character.visual.position.y = THREE.MathUtils.damp(
+      character.visual.position.y,
+      0,
+      damping,
+      dt,
+    );
+    cameraAnchor = THREE.MathUtils.damp(cameraAnchor, 0.4, 8, dt);
+  }
+
+  // 坐姿：大腿前伸水平、小腿下垂，脚落地面、臀部落到凳面高度
+  const SIT_HIP = -1.45;
+  const SIT_KNEE = 1.5;
+
+  function applySitPose(dt) {
+    const damping = 10;
+    character.legLeft.rotation.x = THREE.MathUtils.damp(
+      character.legLeft.rotation.x,
+      SIT_HIP - 0.06,
+      damping,
+      dt,
+    );
+    character.legRight.rotation.x = THREE.MathUtils.damp(
+      character.legRight.rotation.x,
+      SIT_HIP + 0.06,
+      damping,
+      dt,
+    );
+    character.kneeLeft.rotation.x = THREE.MathUtils.damp(
+      character.kneeLeft.rotation.x,
+      SIT_KNEE,
+      damping,
+      dt,
+    );
+    character.kneeRight.rotation.x = THREE.MathUtils.damp(
+      character.kneeRight.rotation.x,
+      SIT_KNEE,
+      damping,
+      dt,
+    );
+    character.armLeft.rotation.x = THREE.MathUtils.damp(
+      character.armLeft.rotation.x,
+      -0.95,
+      damping,
+      dt,
+    );
+    character.armRight.rotation.x = THREE.MathUtils.damp(
+      character.armRight.rotation.x,
+      -0.95,
+      damping,
+      dt,
+    );
+    character.elbowLeft.rotation.x = THREE.MathUtils.damp(
+      character.elbowLeft.rotation.x,
+      -0.55,
+      damping,
+      dt,
+    );
+    character.elbowRight.rotation.x = THREE.MathUtils.damp(
+      character.elbowRight.rotation.x,
+      -0.55,
+      damping,
+      dt,
+    );
+
+    const footLeft = getFootHeight(
+      character.legLeft.rotation.x,
+      character.kneeLeft.rotation.x,
+    );
+    const footRight = getFootHeight(
+      character.legRight.rotation.x,
+      character.kneeRight.rotation.x,
+    );
+    const stanceOffset = -Math.min(footLeft, footRight);
+    character.visual.position.y = THREE.MathUtils.damp(
+      character.visual.position.y,
+      stanceOffset,
+      12,
+      dt,
+    );
+    character.visual.rotation.x = THREE.MathUtils.damp(
+      character.visual.rotation.x,
+      0.08,
+      8,
+      dt,
+    );
+    cameraAnchor = THREE.MathUtils.damp(cameraAnchor, 1.15, 8, dt);
+  }
 
   function update(input, camera, delta, elapsed) {
     const dt = Math.min(delta, 0.05);
+
+    if (sleeping) {
+      horizontalVelocity.set(0, 0);
+      verticalVelocity = 0;
+      grounded = true;
+      applyLiePose(dt);
+      return { grounded: true, speed: 0 };
+    }
+
+    if (sitting) {
+      horizontalVelocity.set(0, 0);
+      verticalVelocity = 0;
+      grounded = true;
+      applySitPose(dt);
+      return { grounded: true, speed: 0 };
+    }
 
     camera.getWorldDirection(forward);
     forward.y = 0;
@@ -504,12 +669,43 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     }
   }
 
+  function setSitting(on) {
+    sitting = on;
+    if (on) {
+      horizontalVelocity.set(0, 0);
+      verticalVelocity = 0;
+      grounded = true;
+    }
+  }
+
+  function setSleeping(on) {
+    sleeping = on;
+    if (on) {
+      sitting = false;
+      horizontalVelocity.set(0, 0);
+      verticalVelocity = 0;
+      grounded = true;
+    } else {
+      // 起床后回到站姿，位置由落地逻辑接管
+      verticalVelocity = 0;
+      grounded = false;
+    }
+  }
+
   return {
     group,
     update,
     teleport,
+    setSitting,
+    setSleeping,
     get grounded() {
       return grounded;
+    },
+    get sitting() {
+      return sitting;
+    },
+    get sleeping() {
+      return sleeping;
     },
     get speed() {
       return horizontalVelocity.length();
