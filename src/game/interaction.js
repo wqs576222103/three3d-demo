@@ -11,6 +11,7 @@ export function createInteraction({
   input,
   hut,
   riding,
+  fishing,
   promptEl,
   overlayEl,
 }) {
@@ -191,6 +192,8 @@ export function createInteraction({
       beginFade({ out: 0.14, hold: 0, inn: 0.24, mid: riding.dismount });
       return;
     }
+    // 鱼竿的拾取点在溪边石墩，比骑乘判定更具体，先问它
+    if (fishing.handleInteract()) return;
     const mount = riding.findMount(p);
     if (mount) {
       beginFade({
@@ -241,6 +244,8 @@ export function createInteraction({
     let shown = "";
     if (toast) {
       shown = toast.text;
+    } else if (fishing.toast) {
+      shown = fishing.toast;
     } else if (sleeping) {
       shown = fade ? "" : "睡眠中 · 按 E 起床";
     } else if (sitting) {
@@ -252,7 +257,11 @@ export function createInteraction({
     } else if (!fade) {
       const p = player.group.position;
       const mount = riding.findMount(p);
-      if (mount) {
+      const fishingPrompt = fishing.prompt();
+      // 下杆/收线中的提示压过骑乘：手里有竿的时候先顾鱼
+      const busy = fishing.state === "bite" || fishing.state === "cast";
+      if (fishingPrompt && (!mount || busy)) shown = fishingPrompt;
+      else if (mount) {
         shown = `按 E 骑上${mount.label}${mount.hint ? ` · ${mount.hint}` : ""}`;
       } else if (mode === "inside") {
         if (hut.isNearBed(p.x, p.z)) shown = "按 E 睡觉";

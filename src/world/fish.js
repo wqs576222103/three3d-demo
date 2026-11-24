@@ -6,6 +6,10 @@ const FISH_COUNT = 32;
 const FLEE_RADIUS = 5.8;
 const BANK_OFFSET = 3.15;
 const BODY_LEVEL = WATER_LEVEL - 0.1;
+// 鱼竿下水时整段河道闻着味来的鱼都算：32 条鱼散在四百来米水道里，
+// 半径小了经常周围一条都没有，只能干等超时。
+const LURE_RADIUS = 34;
+const LURE_SPEED = 2.4;
 
 function dampAngle(current, target, lambda, delta) {
   const difference = Math.atan2(
@@ -117,21 +121,86 @@ export function createFish() {
     });
   }
 
+  let lure = null;
+  let hooked = null;
+
+  const nearestToLure = () => {
+    if (!lure) return null;
+    let best = null;
+    let bestGap = Infinity;
+    fishes.forEach((fish) => {
+      if (fish === hooked) return;
+      const gap = Math.hypot(fish.x - lure.x, fish.z - lure.z);
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = fish;
+      }
+    });
+    return best ? { fish: best, gap: bestGap } : null;
+  };
+
   return {
     group,
+    setLure(x, z) {
+      lure = { x, z };
+    },
+    clearLure() {
+      lure = null;
+    },
+    nearestLureGap() {
+      const found = nearestToLure();
+      return found ? found.gap : Infinity;
+    },
+    // 咬钩：最近的那条鱼被钉在钩子上，之后的位置由 fishing 通过 moveHooked 驱动
+    hookNearest(maxGap) {
+      const found = nearestToLure();
+      if (!found || found.gap > maxGap) return false;
+      hooked = found.fish;
+      hooked.pin = { x: lure.x, y: WATER_LEVEL - 0.06, z: lure.z };
+      return true;
+    },
+    moveHooked(x, y, z) {
+      if (hooked) hooked.pin = { x, y, z };
+    },
+    releaseHook() {
+      if (!hooked) return;
+      const fish = hooked;
+      fish.x = THREE.MathUtils.clamp(fish.x, -halfMap, halfMap);
+      fish.z = getStreamCenterZ(fish.x);
+      fish.panic = 0;
+      hooked = null;
+    },
     update(elapsed, delta, playerPosition) {
       const dt = Math.min(delta, 0.05);
 
       fishes.forEach((fish) => {
+        if (fish === hooked) {
+          const thrash = Math.sin(elapsed * 21 + fish.phase);
+          fish.group.position.set(
+            fish.pin.x + thrash * 0.06,
+            fish.pin.y + Math.abs(thrash) * 0.03,
+            fish.pin.z - thrash * 0.05,
+          );
+          fish.group.rotation.set(0.1, fish.heading + thrash * 0.3, 0.28 + thrash * 0.16);
+          fish.tailPivot.rotation.y = thrash * 0.42;
+          return;
+        }
+
         const dx = fish.x - playerPosition.x;
         const dz = fish.z - playerPosition.z;
         const distance = Math.hypot(dx, dz);
-        const fleeing = distance < FLEE_RADIUS;
+        const lureGap = lure
+          ? Math.hypot(fish.x - lure.x, fish.z - lure.z)
+          : Infinity;
+        const chasing = lureGap < LURE_RADIUS;
+        const fleeing = distance < FLEE_RADIUS && !chasing;
         let desiredHeading =
           fish.baseHeading +
           Math.sin(elapsed * fish.wanderFreq + fish.phase) * 0.62;
 
-        if (fleeing) {
+        if (chasing) {
+          desiredHeading = Math.atan2(lure.x - fish.x, lure.z - fish.z);
+        } else if (fleeing) {
           desiredHeading = Math.atan2(dx, dz);
         }
 
@@ -143,13 +212,15 @@ export function createFish() {
             ? (fish.x < 0 ? 1 : -1) * (3.5 - edgeDistance) * 0.8
             : 0;
         const directionX = Math.sin(desiredHeading) + edgeSteer;
-        const directionZ = Math.cos(desiredHeading) - bankOffset * 0.9;
+        // 追饵时收起"回中心线"的力，否则饵甩在边上一米多鱼就永远到不了
+        const directionZ =
+          Math.cos(desiredHeading) - bankOffset * (chasing ? 0.12 : 0.9);
         desiredHeading = Math.atan2(directionX, directionZ);
 
         fish.heading = dampAngle(
           fish.heading,
           desiredHeading,
-          fleeing ? 10 : 2.4,
+          fleeing ? 10 : chasing ? 5.5 : 2.4,
           dt,
         );
         const panicTarget = fleeing ? 1 : 0;
@@ -157,7 +228,8 @@ export function createFish() {
           (panicTarget - fish.panic) *
           (1 - Math.exp(-(fleeing ? 9 : 1.6) * dt));
 
-        const speed = THREE.MathUtils.lerp(fish.cruiseSpeed, 6.4, fish.panic);
+        let speed = THREE.MathUtils.lerp(fish.cruiseSpeed, 6.4, fish.panic);
+        if (chasing) speed = THREE.MathUtils.lerp(speed, LURE_SPEED, 0.8);
         fish.x += Math.sin(fish.heading) * speed * dt;
         fish.z += Math.cos(fish.heading) * speed * dt;
 

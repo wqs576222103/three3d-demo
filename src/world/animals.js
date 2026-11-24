@@ -604,6 +604,9 @@ const BUFFALO_CFG = {
   flankOffset: 1.2,
   saddle: { x: 0, y: 1.05, z: 0.02 },
   turnRate: 1.5,
+  // 驮着两吨身子，只够抬起来半米：滞空 0.45 秒，岸上蹦一步不到四米，
+  // 只有在河里跑起来才勉强跳得远些，比马差一大截
+  jump: { velocity: 5.0, gravity: 22 },
   idleWalk: 0.55,
   roamRadius: 6,
   attentionRadius: 6,
@@ -621,8 +624,9 @@ const HORSE_CFG = {
   flankOffset: 0.95,
   saddle: { x: 0, y: 1.0, z: -0.02 },
   turnRate: 1.8,
-  // 腾起 1.2 米、滞空 0.7 秒，快马疾奔时正好跨过一块礁石
-  jump: { velocity: 6.8, gravity: 19 },
+  // 腾起 1.5 米、滞空将近 1 秒：把重力放轻而不是把马顶更高，
+  // 这样疾奔时一步能跨过二十多米，慢三步也能跳过十来米外的礁石
+  jump: { velocity: 6.4, gravity: 13.6 },
   idleWalk: 0.6,
   roamRadius: 8,
   attentionRadius: 6.5,

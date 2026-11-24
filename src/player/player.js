@@ -136,9 +136,10 @@ function createCharacter() {
   const elbowLeft = new THREE.Group();
   const elbowRight = new THREE.Group();
 
+  // 模型朝 +z，而 right = forward × up，所以角色自己的右手侧是 local -x
   [
-    [armLeft, elbowLeft, -0.3],
-    [armRight, elbowRight, 0.3],
+    [armLeft, elbowLeft, 0.3],
+    [armRight, elbowRight, -0.3],
   ].forEach(([arm, elbow, x]) => {
     arm.position.set(x, 1.4, 0);
     const upperArm = new THREE.Mesh(upperArmGeometry, jacket);
@@ -162,8 +163,8 @@ function createCharacter() {
   const kneeRight = new THREE.Group();
 
   [
-    [legLeft, kneeLeft, -0.12],
-    [legRight, kneeRight, 0.12],
+    [legLeft, kneeLeft, 0.12],
+    [legRight, kneeRight, -0.12],
   ].forEach(([leg, knee, x]) => {
     leg.position.set(x, 0.85, 0);
     const upperLeg = new THREE.Mesh(upperLegGeometry, trousers);
@@ -214,6 +215,10 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
   let sitting = false;
   let sleeping = false;
   let riding = false;
+  // 手里端着东西（鱼竿）：右手保持屈小臂的持握姿势
+  let handProp = false;
+  // 下杆之后站定，方向键与跳跃都不再接管位置
+  let movementLocked = false;
 
   // 躺姿：躯干放平（rotation.x≈-90°），沿床长轴展开，脸朝上
   const LIE_ROT_X = -Math.PI / 2 - 0.12;
@@ -477,10 +482,12 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     right.crossVectors(forward, UP).normalize();
 
     wish.set(0, 0, 0);
-    if (input.forward) wish.add(forward);
-    if (input.backward) wish.sub(forward);
-    if (input.right) wish.add(right);
-    if (input.left) wish.sub(right);
+    if (!movementLocked) {
+      if (input.forward) wish.add(forward);
+      if (input.backward) wish.sub(forward);
+      if (input.right) wish.add(right);
+      if (input.left) wish.sub(right);
+    }
 
     const moving = wish.lengthSq() > 0.0001;
     if (moving) {
@@ -561,7 +568,7 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     const ground = Math.max(terrainHeight, rockHeight);
 
     const jumpRequested = input.consumeJump();
-    if (grounded && jumpRequested) {
+    if (grounded && jumpRequested && !movementLocked) {
       grounded = false;
       verticalVelocity = JUMP_SPEED;
     }
@@ -664,6 +671,13 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
       armRightTarget = -0.04 - Math.sin(elapsed * 1.6) * 0.025;
       elbowLeftTarget = -0.14;
       elbowRightTarget = -0.14;
+    }
+
+    if (handProp && !crouching) {
+      // 右手屈着小臂端住鱼竿：抬到胸前，摆幅只留三成给走路，
+      // 这样站着不动时竿稳，迈步时竿跟着手臂一起前后晃
+      armRightTarget = armRightTarget * 0.34 - 0.52;
+      elbowRightTarget = -1.18;
     }
 
     character.legLeft.rotation.x = THREE.MathUtils.damp(
@@ -800,6 +814,16 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     }
   }
 
+  // 手里端着长条道具（鱼竿）时切到屈臂持握姿势
+  function setHandProp(on) {
+    handProp = on;
+  }
+
+  function setMovementLock(on) {
+    movementLocked = on;
+    if (on) horizontalVelocity.set(0, 0);
+  }
+
   return {
     group,
     update,
@@ -807,6 +831,12 @@ export function createPlayer(startX = 5, startZ = 13, collisionWorld = null) {
     setSitting,
     setSleeping,
     setRiding,
+    setHandProp,
+    setMovementLock,
+    // 手持道具挂在 character.elbowRight（右小臂）上，跟着手臂一起动
+    get character() {
+      return character;
+    },
     get grounded() {
       return grounded;
     },

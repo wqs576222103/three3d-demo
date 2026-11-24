@@ -134,6 +134,71 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* 收线蓄力条：fill 是蓄力，band 标出够把鱼提出水的刻度，
+   底部细条是线张力，变满就绷断 */
+.reel {
+  position: fixed;
+  bottom: clamp(126px, 17vh, 196px);
+  left: 50%;
+  transform: translateX(-50%) scale(0.94);
+  width: min(300px, 62vw);
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(16, 28, 38, 0.55);
+  border: 1px solid rgba(245, 247, 242, 0.24);
+  backdrop-filter: blur(6px);
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    visibility 0.18s ease;
+  z-index: 3;
+}
+
+.reel.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) scale(1);
+}
+
+.reel-fill,
+.reel-tension {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+.reel-fill {
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, rgba(206, 232, 214, 0.7), rgba(245, 247, 242, 0.95));
+}
+
+.reel-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 68%;
+  width: 2px;
+  background: rgba(255, 214, 122, 0.9);
+}
+
+.reel-tension {
+  bottom: 0;
+  height: 3px;
+  background: rgba(226, 96, 78, 0.95);
+}
+
+.reel.is-tight {
+  border-color: rgba(226, 96, 78, 0.95);
+  box-shadow: 0 0 14px rgba(226, 96, 78, 0.45);
+}
+
 .sleep-overlay {
   position: fixed;
   inset: 0;

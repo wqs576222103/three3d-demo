@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { createAmbience } from "./audio/ambience.js";
 import { createInteraction } from "./game/interaction.js";
+import { createFishing } from "./game/fishing.js";
 import { createRiding } from "./game/riding.js";
 import { createCollisionWorld } from "./physics/colliders.js";
 import { createInput } from "./player/input.js";
@@ -204,6 +205,9 @@ let hasRendered = false;
 
 const riding = createRiding({ player, animals, collisionWorld });
 
+const fishing = createFishing({ player, fish, hut, input, riding });
+scene.add(fishing.group);
+
 const interaction = createInteraction({
   player,
   camera,
@@ -211,6 +215,7 @@ const interaction = createInteraction({
   input,
   hut,
   riding,
+  fishing,
   promptEl: document.querySelector("#prompt"),
   overlayEl: document.querySelector("#sleep-overlay"),
 });
@@ -228,6 +233,7 @@ function animate() {
   riding.update(input);
   animals.update(elapsed, delta, player.group.position);
   riding.sync();
+  fishing.update(delta, elapsed);
 
   followTarget.set(
     player.group.position.x,
