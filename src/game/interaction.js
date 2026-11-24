@@ -138,7 +138,8 @@ export function createInteraction({
     let opacity;
     if (fade.t < out) opacity = fade.t / out;
     else if (fade.t < out + hold) opacity = 1;
-    else if (fade.t < out + hold + inn) opacity = 1 - (fade.t - out - hold) / inn;
+    else if (fade.t < out + hold + inn)
+      opacity = 1 - (fade.t - out - hold) / inn;
     else opacity = 0;
     setOverlay(opacity, fade.message);
     if (fade.t >= out + hold + inn) {
@@ -259,7 +260,10 @@ export function createInteraction({
       const mount = riding.findMount(p);
       const fishingPrompt = fishing.prompt();
       // 下杆/收线中的提示压过骑乘：手里有竿的时候先顾鱼
-      const busy = fishing.state === "bite" || fishing.state === "cast";
+      const busy =
+        fishing.state === "bite" ||
+        fishing.state === "cast" ||
+        fishing.state === "aim";
       if (fishingPrompt && (!mount || busy)) shown = fishingPrompt;
       else if (mount) {
         shown = `按 E 骑上${mount.label}${mount.hint ? ` · ${mount.hint}` : ""}`;
@@ -291,7 +295,12 @@ export function createInteraction({
   const _zones = [hut.cameraBounds, hut.doorCorridor];
 
   const inZone = (b, x, y, z) =>
-    x >= b.minX && x <= b.maxX && y >= b.minY && y <= b.maxY && z >= b.minZ && z <= b.maxZ;
+    x >= b.minX &&
+    x <= b.maxX &&
+    y >= b.minY &&
+    y <= b.maxY &&
+    z >= b.minZ &&
+    z <= b.maxZ;
 
   function freeDistanceAlong(dir, t) {
     if (!_zones.some((b) => inZone(b, t.x, t.y, t.z))) {
@@ -303,7 +312,11 @@ export function createInteraction({
     let dist = 0;
     for (let i = 0; i < 96; i += 1) {
       const next = dist + step;
-      if (!_zones.some((b) => inZone(b, t.x + dir.x * next, t.y + dir.y * next, t.z + dir.z * next))) {
+      if (
+        !_zones.some((b) =>
+          inZone(b, t.x + dir.x * next, t.y + dir.y * next, t.z + dir.z * next),
+        )
+      ) {
         break;
       }
       dist = next;
@@ -335,7 +348,10 @@ export function createInteraction({
       }
     }
     _sph.makeSafe();
-    const limit = Math.max(0.3, freeDistanceAlong(_off.setFromSpherical(_sph).normalize(), _target));
+    const limit = Math.max(
+      0.3,
+      freeDistanceAlong(_off.setFromSpherical(_sph).normalize(), _target),
+    );
     // 屋内空间不足时以墙为准，否则 OrbitControls 的最小距离会把镜头
     // 又顶回墙外，靠墙转动就成了一段一段的抖动。
     const minDistance = Math.min(camMinDistance, limit);

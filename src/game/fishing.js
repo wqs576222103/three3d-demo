@@ -13,12 +13,11 @@ const ROD_HOME = new THREE.Vector3(
   getGroundHeight(ROD_HOME_X, ROD_HOME_Z),
   ROD_HOME_Z,
 );
-// 沿岸找水：从人身前 2.2 米起，最远够到 7.4 米，浅过 0.26 米钩不住鱼。
+// 落点范围：从人身前 2.2 米起，最远够到 7.4 米，浅过 0.26 米钩不住鱼。
 // 还要落在离水道中心 2.4 米以内，鱼平时只贴着中心线游，甩在边上它们到不了。
 const CAST_START = 2.2;
 const CAST_REACH = 7.4;
 const CAST_STEP = 0.4;
-const CAST_ARC = [-0.45, -0.22, 0, 0.22, 0.45];
 const CAST_MIN_DEPTH = 0.26;
 const CAST_MAX_OFF_CENTER = 2.4;
 // 鱼把线扯出这个长度就绷断，站着下杆最稳
@@ -122,7 +121,7 @@ function buildRodStand() {
   return stand;
 }
 
-export function createFishing({ player, fish, hut, input, riding }) {
+export function createFishing({ player, fish, hut, input, riding, camera }) {
   const group = new THREE.Group();
 
   const { rod, tip: rodTip } = buildRod();
@@ -135,17 +134,53 @@ export function createFishing({ player, fish, hut, input, riding }) {
   const bobber = new THREE.Group();
   const float = new THREE.Mesh(
     new THREE.SphereGeometry(0.062, 8, 6),
-    new THREE.MeshStandardMaterial({ color: 0xd2453a, roughness: 0.45, flatShading: true }),
+    new THREE.MeshStandardMaterial({
+      color: 0xd2453a,
+      roughness: 0.45,
+      flatShading: true,
+    }),
   );
   float.scale.y = 1.35;
   const cap = new THREE.Mesh(
     new THREE.SphereGeometry(0.042, 8, 6),
-    new THREE.MeshStandardMaterial({ color: 0xf3efe2, roughness: 0.6, flatShading: true }),
+    new THREE.MeshStandardMaterial({
+      color: 0xf3efe2,
+      roughness: 0.6,
+      flatShading: true,
+    }),
   );
   cap.position.y = 0.1;
   bobber.add(float, cap);
   bobber.visible = false;
   group.add(bobber);
+
+  // 选点阶段的落点标圈：贴在水面上跟着指针走，下杆后就换成浮漂
+  const aimMarker = new THREE.Group();
+  const aimRingGeometry = new THREE.RingGeometry(0.3, 0.44, 26);
+  aimRingGeometry.rotateX(-Math.PI / 2);
+  const aimMaterial = new THREE.MeshBasicMaterial({
+    color: 0xf5f7f2,
+    transparent: true,
+    opacity: 0.92,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const aimRing = new THREE.Mesh(aimRingGeometry, aimMaterial);
+  const aimDot = new THREE.Mesh(
+    new THREE.CircleGeometry(0.07, 14),
+    aimMaterial,
+  );
+  aimDot.rotation.x = -Math.PI / 2;
+  aimMarker.add(aimRing, aimDot);
+  // 水面是透明材质且不写深度，标圈排在它后面画才不会被水面糊掉
+  aimMarker.renderOrder = 1;
+  aimMarker.visible = false;
+  group.add(aimMarker);
+
+  const aimRay = new THREE.Raycaster();
+  const aimNdc = new THREE.Vector2();
+  const aimPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -WATER_LEVEL);
+  const aimHit = new THREE.Vector3();
 
   const LINE_SEGMENTS = 12;
   const lineGeometry = new THREE.BufferGeometry();
@@ -168,11 +203,13 @@ export function createFishing({ player, fish, hut, input, riding }) {
   group.add(line);
 
   let carrying = false;
-  // home：杆架在溪边石墩 · held：拿在手上没下杆 · cast：钩在水里等口
-  // bite：咬钩收线 · landed：起鱼动画
+  // home：杆架在溪边石墩 · held：拿在手上没下杆 · aim：按 R 后选落点
+  // cast：钩在水里等口 · bite：咬钩收线 · landed：起鱼动画
   let state = "home";
   let hook = null;
-  let castPoint = null;
+  let aimPoint = null;
+  // 手持时够不够得着水：提示和 R 键都看它，没走近就不给选点
+  let reachable = false;
   let charge = 0;
   let tension = 0;
   let waitTime = 0;
@@ -200,25 +237,78 @@ export function createFishing({ player, fish, hut, input, riding }) {
     return Math.hypot(p.x - ROD_HOME.x, p.z - ROD_HOME.z) < PICK_RADIUS;
   }
 
-  // 前沿着视线左右扫，取最近的一个够深的点：溪岸弯弯曲曲，
-  // 正前方往往是岸坡，偏一点才有水。
-  function findCastPoint(p, facing) {
-    const fx = Math.sin(facing);
-    const fz = Math.cos(facing);
-    for (let d = CAST_START; d <= CAST_REACH; d += CAST_STEP) {
-      for (let i = 0; i < CAST_ARC.length; i += 1) {
-        const a = CAST_ARC[i];
-        const ca = Math.cos(a);
-        const sa = Math.sin(a);
-        const x = p.x + (fx * ca + fz * sa) * d;
-        const z = p.z + (-fx * sa + fz * ca) * d;
-        if (depthAt(x, z) < CAST_MIN_DEPTH) continue;
-        if (Math.abs(z - getStreamCenterZ(x)) > CAST_MAX_OFF_CENTER) continue;
-        if (hut.isInside(x, z)) continue;
-        return { x, y: WATER_LEVEL, z };
+  // 下钩点的硬条件：够深、够靠水道中间、不落进屋里
+  function isCastable(x, z) {
+    if (depthAt(x, z) < CAST_MIN_DEPTH) return false;
+    if (Math.abs(z - getStreamCenterZ(x)) > CAST_MAX_OFF_CENTER) return false;
+    return !hut.isInside(x, z);
+  }
+
+  // 选点：把指针投影到水面取方向，距离先夹进 [CAST_START, CAST_REACH]，
+  // 再从这个期望点沿方向先往远、后往回挪，挪到第一块够深、够靠中间的水。
+  // 溪岸弯弯曲曲，指针常落在岸坡或对岸上，挪一挪总能找到钩得住的地方。
+  function findAimPoint(p) {
+    aimNdc.set(input.pointerX, input.pointerY);
+    aimRay.setFromCamera(aimNdc, camera);
+    // 指针指着天空时射线碰不到水面
+    if (!aimRay.ray.intersectPlane(aimPlane, aimHit)) return null;
+    const dx = aimHit.x - p.x;
+    const dz = aimHit.z - p.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.001) return null;
+    const want = THREE.MathUtils.clamp(dist, CAST_START, CAST_REACH);
+
+    // 沿一个方向从期望距离先往远、再往回找能下钩的点
+    const march = (ux, uz) => {
+      for (const step of [1, -1]) {
+        for (
+          let d = want;
+          step > 0 ? d <= CAST_REACH + 1e-6 : d >= CAST_START - 1e-6;
+          d += step * CAST_STEP
+        ) {
+          const x = p.x + ux * d;
+          const z = p.z + uz * d;
+          if (isCastable(x, z)) return { x, y: WATER_LEVEL, z };
+        }
+      }
+      return null;
+    };
+
+    const ux = dx / dist;
+    const uz = dz / dist;
+    const direct = march(ux, uz);
+    if (direct) return direct;
+
+    // 这个方向上没有水（指针常差一点点落在岸上）：左右小幅转头再找，
+    // 取离指针落点最近的那块水，白圈就不会在水边一闪一闪地消失；
+    // 最近的水也离指针太远时宁可不显示，免得白圈跳到看不见的地方
+    const base = Math.atan2(ux, uz);
+    let best = null;
+    let bestGap = Infinity;
+    for (const turn of [0.18, -0.18, 0.36, -0.36, 0.54, -0.54, 0.72, -0.72]) {
+      const a = base + turn;
+      const point = march(Math.sin(a), Math.cos(a));
+      if (!point) continue;
+      const gap = Math.hypot(point.x - aimHit.x, point.z - aimHit.z);
+      if (gap < bestGap) {
+        bestGap = gap;
+        best = point;
       }
     }
-    return null;
+    return bestGap <= 3 ? best : null;
+  }
+
+  // 人站得够不够近：绕一圈粗扫，任意方向上找得到能下钩的点就算够得着。
+  // "按 R 选落点"的提示和 R 键本身都由它把关，没走到溪边就不给选点。
+  function hasReachableWater(p) {
+    for (let a = 0; a < Math.PI * 2; a += 0.35) {
+      const ux = Math.sin(a);
+      const uz = Math.cos(a);
+      for (let d = CAST_START; d <= CAST_REACH + 1e-6; d += CAST_STEP) {
+        if (isCastable(p.x + ux * d, p.z + uz * d)) return true;
+      }
+    }
+    return false;
   }
 
   // 手持时挂到右小臂上：走路摆臂、跳起抬臂，竿头和红布都跟着手走
@@ -267,7 +357,7 @@ export function createFishing({ player, fish, hut, input, riding }) {
     state = "held";
     player.setHandProp(true);
     attachRod();
-    say("拿上鱼竿，往溪边找个深水点下杆");
+    say("拿上鱼竿，按 R 选落点，左键下杆");
   }
 
   function putBack() {
@@ -279,12 +369,26 @@ export function createFishing({ player, fish, hut, input, riding }) {
     say("鱼竿架回溪边的石墩了");
   }
 
-  function castLine() {
-    if (!castPoint) {
-      say("这里够不着水，往溪边走走再按 R");
+  // 按 R 进入选点：钩子还没下水，人还能走动，白圈跟着指针在水面挪
+  function beginAim() {
+    state = "aim";
+    aimPoint = null;
+  }
+
+  function cancelAim(message) {
+    state = "held";
+    aimPoint = null;
+    if (message) say(message);
+  }
+
+  function castLine(point) {
+    if (!point) {
+      say("指针这里下不了钩，移到水面上再左键");
       return;
     }
-    hook = { ...castPoint };
+    hook = { ...point };
+    aimPoint = null;
+    aimMarker.visible = false;
     runOffset = 0;
     nagged = false;
     state = "cast";
@@ -387,7 +491,8 @@ export function createFishing({ player, fish, hut, input, riding }) {
 
   function poseLine(elapsed) {
     if (!hook) return;
-    const dipping = state === "bite" ? 0.1 + Math.abs(Math.sin(elapsed * 7)) * 0.06 : 0;
+    const dipping =
+      state === "bite" ? 0.1 + Math.abs(Math.sin(elapsed * 7)) * 0.06 : 0;
     const bob = Math.sin(elapsed * 2.2) * 0.02;
     const hx = hook.x + (state === "bite" ? runOffset : 0);
     const hz = hook.z + (state === "bite" ? -runOffset * 0.5 : 0);
@@ -395,7 +500,11 @@ export function createFishing({ player, fish, hut, input, riding }) {
 
     rodTip.getWorldPosition(_tip);
     const sag = state === "bite" ? 0.05 : 0.2;
-    _mid.set((_tip.x + hx) * 0.5, Math.min(_tip.y, WATER_LEVEL) - sag, (_tip.z + hz) * 0.5);
+    _mid.set(
+      (_tip.x + hx) * 0.5,
+      Math.min(_tip.y, WATER_LEVEL) - sag,
+      (_tip.z + hz) * 0.5,
+    );
 
     const attr = lineGeometry.getAttribute("position");
     for (let i = 0; i <= LINE_SEGMENTS; i += 1) {
@@ -403,7 +512,8 @@ export function createFishing({ player, fish, hut, input, riding }) {
       const it = 1 - t;
       // 二次贝塞尔：杆头 → 下垂的中点 → 浮漂
       const x = it * it * _tip.x + 2 * it * t * _mid.x + t * t * hx;
-      const y = it * it * _tip.y + 2 * it * t * _mid.y + t * t * (WATER_LEVEL + 0.02);
+      const y =
+        it * it * _tip.y + 2 * it * t * _mid.y + t * t * (WATER_LEVEL + 0.02);
       const z = it * it * _tip.z + 2 * it * t * _mid.z + t * t * hz;
       attr.setXYZ(i, x, y, z);
     }
@@ -418,15 +528,33 @@ export function createFishing({ player, fish, hut, input, riding }) {
 
     const p = player.group.position;
     const blocked = riding.active || player.sitting || player.sleeping;
-    castPoint = carrying && state === "held" && !blocked ? findCastPoint(p, player.group.rotation.y) : null;
+    // 够不够得着水只在手持时算：没走到溪边就不提示、也不让按 R
+    reachable =
+      carrying && state === "held" && !blocked ? hasReachableWater(p) : false;
+    // 选点阶段跟着指针走：指不到能下钩的水就把白圈藏起来
+    aimPoint = carrying && state === "aim" && !blocked ? findAimPoint(p) : null;
+    aimMarker.visible = Boolean(aimPoint);
+    if (aimPoint) {
+      aimMarker.position.set(aimPoint.x, WATER_LEVEL + 0.04, aimPoint.z);
+      // 轻微呼吸感，水面静止时也能一眼认出这是可选的落点
+      aimMarker.scale.setScalar(1 + Math.sin(elapsed * 3.4) * 0.06);
+    }
+
+    // 左键点击每帧都清：选点之外攒下的旧点击不能在选点那一刻误落杆
+    const dropClick = input.consumeCastClick();
 
     // 钩在水里就是"钓鱼状态"：方向键和跳跃全部站死，想挪窝先收杆
-    const shouldLock = state === "cast" || state === "bite" || state === "landed";
+    const shouldLock =
+      state === "cast" || state === "bite" || state === "landed";
     if (shouldLock !== movementLocked) {
       movementLocked = shouldLock;
       player.setMovementLock(shouldLock);
     }
-    if (shouldLock && !nagged && (input.forward || input.backward || input.left || input.right)) {
+    if (
+      shouldLock &&
+      !nagged &&
+      (input.forward || input.backward || input.left || input.right)
+    ) {
       nagged = true;
       say("钓鱼时站住别动，按 R 收杆再走", 2.2);
     }
@@ -434,15 +562,32 @@ export function createFishing({ player, fish, hut, input, riding }) {
     if (blocked && (state === "cast" || state === "bite")) {
       retrieve("骑乘中顾不上钓鱼，鱼竿收回来了");
     }
+    // 选点选到一半要去骑马/睡觉：钩子还没下水，直接退回手持就行
+    if (blocked && state === "aim") {
+      cancelAim();
+    }
 
     if (!blocked && input.consumeCast()) {
-      if (state === "held") castLine();
-      else if (state === "cast") retrieve("提起鱼竿，什么也没钓到");
+      if (state === "held") {
+        if (reachable) beginAim();
+        else say("这里够不着水，往溪边走走再按 R");
+      } else if (state === "cast") retrieve("提起鱼竿，什么也没钓到");
+      // 选点中按 R 什么都不做：落杆交给左键
+    }
+
+    if (state === "aim") {
+      // 选点时的左键就是"下杆"，这次点击攒下的收线额度顺手丢掉，
+      // 免得咬钩时凭空白送一下
+      input.consumeReel();
+      if (!blocked && dropClick) castLine(aimPoint);
     }
 
     if (state === "cast") {
       waitTime += delta;
-      if (fish.nearestLureGap() < BITE_GAP && fish.hookNearest(BITE_GAP + 0.5)) {
+      if (
+        fish.nearestLureGap() < BITE_GAP &&
+        fish.hookNearest(BITE_GAP + 0.5)
+      ) {
         hookBite();
       } else if (waitTime > BITE_TIMEOUT) {
         retrieve("半天没鱼咬钩，收杆换个位置");
@@ -468,6 +613,10 @@ export function createFishing({ player, fish, hut, input, riding }) {
       pickUp();
       return true;
     }
+    if (state === "aim") {
+      cancelAim("先不下了，随时按 R 再选点");
+      return true;
+    }
     if (state === "cast") {
       retrieve("提起鱼竿，什么也没钓到");
       return true;
@@ -483,9 +632,23 @@ export function createFishing({ player, fish, hut, input, riding }) {
     if (state === "bite") return "鱼咬钩了！连点鼠标左键收线（点太慢蓄力会掉）";
     if (state === "landed") return "鱼上岸了";
     if (state === "cast") return "鱼钩已入水，等鱼咬钩（站定，按 R 收杆）";
+    if (state === "aim") {
+      if (!aimPoint) return "指针移到水面上选落点 · 左键下杆 · 按 E 取消";
+      const dist = Math.hypot(
+        aimPoint.x - player.group.position.x,
+        aimPoint.z - player.group.position.z,
+      );
+      return `落点 ${dist.toFixed(1)} 米 · 左键下杆 · 按 E 取消`;
+    }
     if (carrying) {
-      if (nearHome(player.group.position)) return "按 E 把鱼竿架回石墩";
-      return castPoint ? "按 R 落杆钓鱼" : "往前找段深水，按 R 落杆";
+      const atHome = nearHome(player.group.position);
+      // 没走到能下杆的距离就不给选点提示，省得对着空地按 R
+      if (!reachable) {
+        return atHome ? "按 E 把鱼竿架回石墩" : "走近溪边的深水，再按 R 选落点";
+      }
+      return atHome
+        ? "按 R 选落点下杆 · 按 E 把鱼竿架回石墩"
+        : "按 R 选落点下杆";
     }
     return nearHome(player.group.position) ? "按 E 拾起鱼竿" : "";
   }
@@ -499,7 +662,8 @@ export function createFishing({ player, fish, hut, input, riding }) {
     const fighting = state === "bite";
     reelEl.classList.toggle("is-visible", fighting);
     if (fighting) {
-      if (reelFillEl) reelFillEl.style.transform = `scaleX(${Math.min(charge, 1).toFixed(3)})`;
+      if (reelFillEl)
+        reelFillEl.style.transform = `scaleX(${Math.min(charge, 1).toFixed(3)})`;
       if (reelTensionEl) {
         reelTensionEl.style.transform = `scaleX(${Math.min(tension, 1).toFixed(3)})`;
       }
@@ -530,8 +694,8 @@ export function createFishing({ player, fish, hut, input, riding }) {
     get hook() {
       return hook;
     },
-    get castPoint() {
-      return castPoint;
+    get aimPoint() {
+      return aimPoint;
     },
   };
 }

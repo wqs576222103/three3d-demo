@@ -7,6 +7,7 @@ import { createRiding } from "./game/riding.js";
 import { createCollisionWorld } from "./physics/colliders.js";
 import { createInput } from "./player/input.js";
 import { createPlayer } from "./player/player.js";
+import { createModal } from "./ui/modal.js";
 import { createAnimals } from "./world/animals.js";
 import { createBirds } from "./world/birds.js";
 import { createClouds } from "./world/clouds.js";
@@ -205,7 +206,7 @@ let hasRendered = false;
 
 const riding = createRiding({ player, animals, collisionWorld });
 
-const fishing = createFishing({ player, fish, hut, input, riding });
+const fishing = createFishing({ player, fish, hut, input, riding, camera });
 scene.add(fishing.group);
 
 const interaction = createInteraction({
@@ -218,6 +219,11 @@ const interaction = createInteraction({
   fishing,
   promptEl: document.querySelector("#prompt"),
   overlayEl: document.querySelector("#sleep-overlay"),
+});
+
+createModal({
+  element: document.querySelector("#help-modal"),
+  trigger: document.querySelector("#help-trigger"),
 });
 
 function animate() {
